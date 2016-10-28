@@ -85,7 +85,7 @@ AMI_kvm()
           -b "SessionCookie=$session" \
           "http://$hostip/Java/jviewer.jnlp?EXTRNIP=$hostip&JNLPSTR=JViewer"
     if egrep -q '(Document Error:|Not Found)' "$1"; then
-        sed -n "s/.*<p>/IPMI ($hostip): /p" "$1" | sed 's,</p>.*,,'
+        $sed -n "s/.*<p>/IPMI ($hostip): /p" "$1" | $sed 's,</p>.*,,'
         return 13
     fi
 }
@@ -100,11 +100,11 @@ AMI_redirect()
         s=$(stat -c%s $3)
         (if [ "$(fgrep '<argument>' $1 | wc -l)" -lt 10 ]; then
             # Assume that it's ASUS
-            sed -n -e 's,[[:space:]]*<argument>\([^<]\+\),\1\n,g; s,\x02,,' -e  's,</argument>,,p' $1 | tr '\n' ' ' |
+            $sed -n -e 's,[[:space:]]*<argument>\([^<]\+\),\1\n,g; s,\x02,,' -e  's,</argument>,,p' $1 | tr '\n' ' ' |
                 awk '{print $1, $2, $3, 0, 0, 5120, 5123, 511, 5900, 1, "EN", $4 }'
          elif fgrep -q '<argument>-hostname</argument>' $1; then
             # Assume that it's AMI6 Supermicro
-            sed -n 's,^[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' $1 | sed -e '{H; N; s/\n/ /; s,^-,,}' |
+            $sed -n 's,^[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' $1 | $sed -e '{H; N; s/\n/ /; s,^-,,}' |
                 awk -vcp=5120 -vfp=5122 -vhp=5123 -vkp=7578 -vl=EN -vvs=0 -vks=0 '
 /hostname/ { h=$2 }
 /kvmtoken/ { kt=$2 }
@@ -119,10 +119,10 @@ AMI_redirect()
 END { print h, kp, kt, ks, vs, cp, fp, 511, 5900, 1, l, wc }'
          else
             # Assume that it's Supermicro
-            sed -n 's,[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' $1 |
+            $sed -n 's,[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' $1 |
                 awk -vh="$hostip" 'NR == 1 { print h; next } { print }' | tr '\n' ' '
          fi) |
-            sed "s,$, $3 $(((s - (s * 277) / 10000) / 1024)) $opt_timeout," |
+            $sed "s,$, $3 $(((s - (s * 277) / 10000) / 1024)) $opt_timeout," |
                 timeout_pass -9 $((opt_timeout * 60 + 15)) java -cp $java_path/redirector.jar com.redirector.AMI.kvm.Redirector
         ;;
     cdrom_nfs)
@@ -156,7 +156,7 @@ END { print h, kp, kt, ks, vs, cp, fp, 511, 5900, 1, l, wc }'
               for i in `seq 24`; do
                 sleep 5
                 eval `$curl -m 20 -f -b "SessionCookie=$session" "http://$hostip/rpc/getrmediacfg.asp" |
-                  sed -n 's/{.*}.*{\(.*\)}.*{.*}.*{}.*/\1/p' | parse_json`
+                  $sed -n 's/{.*}.*{\(.*\)}.*{.*}.*{}.*/\1/p' | parse_json`
                 if [ "$START_FLAG" = "1" ]
                 then
                     [ "$STATUS_FLAG" != "0" ] || { welldone=1; break;}

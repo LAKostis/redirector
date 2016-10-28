@@ -5,9 +5,10 @@ HP_guess()
     fgrep -q "lights-out100_rgb.jpg" $1
 }
 
+
 HP_session_open()
 {
-    session="$($curl --digest -v -u "$opt_user:$opt_passwd" http://$hostip/ 2>&1 | egrep '(Authorization:|Unauthorized\. Please Log In)' | sed 's,^> ,,')"
+    session="$($curl --digest -v -u "$opt_user:$opt_passwd" http://$hostip/ 2>&1 | egrep '(Authorization:|Unauthorized\. Please Log In)' | $sed 's,^> ,,')"
     ! echo $session | fgrep -q 'Unauthorized' || session=
 }
 
@@ -20,7 +21,7 @@ HP_session_close()
 HP_mc_info()
 {
     eval `$curl -H "$session" http://$hostip/ |
-        sed 's,<TR>,\n,g; s,</\?TD>, ,g; s,[ ]*</TR>,,g' | awk '
+        $sed 's,<TR>,\n,g; s,</\?TD>, ,g; s,[ ]*</TR>,,g' | awk '
 /IPMI Version/ { print "ipmiver=" $3 ";" }
 /Firmware Version/ { print "fwver=" $3 ";" }
 /Hardware Version/ { print "hwver=" $3 ";" }
@@ -48,11 +49,11 @@ HP_mc_reset_cold()
 HP_kvm()
 {
     $curl -H "$session" http://$hostip/kvms.html | fgrep 'APPLET CODE' |
-              sed -e 's,<PARAM,\n<PARAM,g' \
+              $sed -e 's,<PARAM,\n<PARAM,g' \
                   -e 's,M2\.JAR,M2.jar,' \
                   -e 's,<BR>.*,\n</APPLET>,' |
-              sed -ne 's,<PARAM NAME="\([^"]\+\)" VALUE="\([^"]\+\)"[ ]*>,"\1=\2",p' |
-                  xargs -r /bin/echo -e  "#!/bin/sh -e\n"java -jar $java_path/HP/M2.JAR com.serverengines.mahogany.MahoganyViewer.class >> $1
+              $sed -ne 's,<PARAM NAME="\([^"]\+\)" VALUE="\([^"]\+\)"[ ]*>,"\1=\2",p' |
+                  $xargs /bin/echo -e  "#!/bin/sh -e\n"java -jar $java_path/HP/M2.JAR com.serverengines.mahogany.MahoganyViewer.class >> $1
 }
 
 HP_redirect()
