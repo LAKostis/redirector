@@ -1,0 +1,65 @@
+#!/bin/sh
+
+IDRAC_guess()
+{
+    $curl https://$hostip/login.html| fgrep -q 'iDRAC'
+}
+
+IDRAC_session_open()
+{
+    session=
+    cookie=
+    tokenstr=
+    session="$($curl -v -d "user=${opt_user}&password=${opt_passwd}" "https://$hostip/data/login" 2>&1)"
+    if [ -n "$session" ]; then
+	    cookie=$(echo "$session" | $sed -n -e 's,.*Set-Cookie\:\ \([^\;]\+\)\;.*,\1,gp')
+	    tokenstr=$(echo "$session" |$sed -n -e 's,.*<forwardUrl>index\.html?\([^\ ><]\+\)<\/.*,\1,gp')
+            ST2="${tokenstr##*,ST2=}"
+	    ST1="${tokenstr%%,ST2=*}"
+	    ST1=${ST1##ST1=}
+    fi
+}
+
+get_data()
+{
+        $curl "https://$hostip/data?get=pwState,sysDesc,sysRev,svcTag,iDSDMVersion,v4Enabled,v4IPAddr,v6Enabled,v6LinkLocal,v6Addr,v6SiteLocal,macAddr,dnsDomain,devLocInfo,osVersion,intrusion,powerSupplies,RecentEventLogEntries,GetRecentWorknotes,lcdChassisStatus,hostEventStatus,lcdEventStatus" \
+		-H "ST2: $ST2" -b "$cookie; tokenvalue=$ST1"
+}
+
+IDRAC_mc_reset_cold()
+{
+    ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb mc reset cold
+}
+
+IDRAC_mc_info()
+{
+    # get_data
+    echo 'bla-bla'
+}
+
+IDRAC_kvm()
+{
+	local hostname=
+        local sysdesc=
+	# FIXME
+	local slot=
+	local data=
+	# we need the following from get_data:
+	# hostname
+        # SysDesc
+        # BladeSlot
+	data=$(get_data)
+	[ -n "$data" ] || error 'Unable to get session data!'
+	hostname="$(echo "$data"|$sed -n -e 's,.*hostname>\([^<\/]\+\)<.*,\1,gp')"
+	sysdesc="$(echo "$data"|$sed -n -e 's,\ ,+,g;s,.*sysDesc>\([^<\/]\+\)<.*,\1,gp')"
+	slot="$(echo "$data"|$sed -n -e 's,.*BladeSlot>\([^<\/]\+\)<.*,\1,gp')"
+        
+	$curl "https://$hostip/viewer.jnlp($hostip@0@$hostname%2C+$sysdesc%2C++Slot+$slot%2C+User%3A+$opt_user@$(LC_ALL=C date +%s)@ST1=$ST1)" \
+	      -e "https://$hostip/sysSummaryData.html" -b "$cookie; tokenvalue=$ST1" > $1
+}
+
+IDRAC_session_close()
+{
+    $curl -b "$cookie" -L -o /dev/null -G https://$hostip/data/logout
+}
+
