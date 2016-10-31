@@ -2,15 +2,18 @@
 
 ILO_guess()
 {
+    local ilo=
     fgrep -q "Hewlett Packard Enterprise Development LP" $1 && \
     fgrep -q "<title>iLO 3</title>" $1 || \
-    fgrep -q "<title></title>" $1
+    # iLO 4 is little bit tricky
+    ilo="$($curl https://$hostip/json/login_session | jq -r .moniker.PRODGEN 2>&1)"
+    [ -n "$ilo" ] && [ "$ilo" == 'iLO 4' ] || return 1
 }
 
 ILO_session_open()
 {
     cookie=
-    session="$(curl -gqsk --compressed -m 60 -d "{\"method\":\"login\",\"user_login\":\"$opt_user\",\"password\":\"$opt_passwd\"}" https://$hostip/json/login_session| jq -r '.session_key')"
+    session="$($curl -d "{\"method\":\"login\",\"user_login\":\"$opt_user\",\"password\":\"$opt_passwd\"}" https://$hostip/json/login_session| jq -r '.session_key')"
     [ -n "$session" ] && cookie="sessionUrl=https%253A%2F%2F$hostip%2F;sessionLang=en;sessionKey=$session;irc=last%3Djrc" || session=
 }
 
