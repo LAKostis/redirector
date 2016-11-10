@@ -39,15 +39,16 @@ ILO_mc_info()
 Product Name              : $(extract_json "$json" product_name)
 Serial Number             : $(extract_json "$json" serial_num)
 Product ID                : $(extract_json "$json" product_id)
-Firmware Revision         : $(extract_json "$json" system_rom)
-License Type              : $(extract_json "$json" license)
-IPMI Version              : $(extract_json "$json" ilo_fw_version)
+BIOS Version              : $(extract_json "$json" system_rom) $(extract_json "$json" system_rom_date)
+iLO License Type          : $(extract_json "$json" license)
+iLO Firmware Version      : $(extract_json "$json" ilo_fw_version)
 System GUID               : $(extract_json "$json" uuid)
 System Health             : $(extract_json "$json" system_health)
 Power State               : $(extract_json "$json" power)
 Device ID                 : 18
 Manufacturer ID           : 11
 Manufacturer Name         : Hewlett-Packard
+UEFI supported            : $(extract_json "$json" isUEFI)
 EOF
 }
 
