@@ -7,6 +7,8 @@ AMI_guess()
         fgrep -q '"/Java/jviewer.jnlp";' $1 || return 1
         if fgrep -q 'gPageDir+"header.html"' $1; then
             ami_is6=Supermicro
+	elif fgrep -q '<title>Megarac SP</title>' $1; then
+	    ami_is6=Megarac
         else
             ami_is6=Quanta
         fi
@@ -20,6 +22,10 @@ AMI_session_open()
           -d "WEBVAR_USERNAME=$opt_user&WEBVAR_PASSWORD=$opt_passwd" \
           "http://$hostip/rpc/WEBSES/create.asp" | parse_json`
     session="$SESSION_COOKIE"
+    ext=
+    [ -n "ami_is6" -a "$ami_is6" == 'Megarac' ] && \
+	  session="$SESSION_COOKIE;BMC_IP_ADDR=$BMC_IP_ADDR"
+          ext="CSRFTOKEN:$CSRFTOKEN"
     [ "$session" != 'Failure_Login_IPMI_Then_LDAP_then_Active_Directory' ] || session=
     [ "$session" != 'Failure_Login_IPMI_Then_LDAP_then_Active_Directory_Radius' ] || session=
 }
@@ -34,15 +40,19 @@ AMI_session_close()
 AMI_mc_info()
 {
     local mfg
+    local get="$curl -b SessionCookie=$session"
+    [ -n "$ext" ] && \
+        get="$get -H $ext"
+    $get "http://$hostip/rpc/getfwinfo.asp"
     if [ -n "$ami_is6" ]; then
-        eval `$curl -b "SessionCookie=$session" \
+        eval `$get \
              "http://$hostip/rpc/getfwinfo.asp" | parse_json`
         DATE="$FirmwareBuildDate"
         TIME="$FirmwareBuildTime"
     else
-        eval `$curl -b "SessionCookie=$session" \
+        eval `$get \
              "http://$hostip/rpc/getbldtime.asp" | parse_json`
-        eval `$curl -b "SessionCookie=$session" \
+        eval `$get \
              "http://$hostip/rpc/getdeviceid.asp" | parse_json`
     fi
     # ipmirev = getbits(_sa.IPMIVersion,3,0) + "." + getbits(_sa.IPMIVersion,7,4)
