@@ -40,6 +40,7 @@ AMI_session_close()
 AMI_mc_info()
 {
     local mfg
+    local fwrev
     local get="$curl -b SessionCookie=$session"
     [ -n "$ext" ] && \
         get="$get -H $ext"
@@ -57,25 +58,44 @@ AMI_mc_info()
     # ipmirev = getbits(_sa.IPMIVersion,3,0) + "." + getbits(_sa.IPMIVersion,7,4)
     # fwrev   = getbits(_sa.FirmwareRevision1,6,0) + "." + (_sa.FirmwareRevision2>>4) + getbits(_sa.FirmwareRevision2,3,0)
     mfg="$(printf "%d" $(((MfgID_1 << 8) + MfgID_0)))"
+    if [ -n "$ami_is6" -a "$ami_is6" == 'Megarac' ]; then
+	    local v=$AuxFirmwareRevision
+	    local auxver=$(( (v<<8 & 0xff00ff00) | (v>>8 & 0xff00ff) ))
+	    auxver=$(( (auxver<<16 & 0xffff0000) | auxver>>16 ))
+	    fwrev=$(printf '%x.%08X' $FirmwareRevision2 $auxver)
+    elif [ -n "$FirmwareRevision2" ]; then
+	    fwrev=$(printf '%x' $FirmwareRevision2)
+    fi
     cat <<EOF
-Device ID                 : $DeviceID
-Device Revision           : $DevRevision
-Firmware Revision         : $(printf "%x.%x" 0x$FirmwareRevision1 $FirmwareRevision2)
-IPMI Version              : $(printf "%0.1f" $IPMIVersion)
-Build Time                : $DATE $TIME
-Manufacturer ID           : $mfg
-Manufacturer Name         : ${ami_is6:-Unknown} ($(printf "0x%x" $mfg))
-Product ID                : $ProdID ($(printf "0x%x" $ProdID))
-Product Name              : Unknown ($(printf "0x%x" $ProdID))
+Device ID              : $DeviceID
+Device Revision        : $DevRevision
+Firmware Revision      : $(printf "%x.%s" 0x$FirmwareRevision1 $fwrev)
+IPMI Version           : $(printf "%0.1f" $IPMIVersion)
+Build Time             : $DATE $TIME
+Manufacturer ID        : $mfg
+Manufacturer Name      : ${ami_is6:-Unknown} ($(printf "0x%x" $mfg))
+Product ID             : $ProdID ($(printf "0x%x" $ProdID))
+Product Name           : Unknown ($(printf "0x%x" $ProdID))
 EOF
     if [ "$mfg" = 47488 ]; then
         eval `$curl -b "SessionCookie=$session" \
              "http://$hostip/rpc/getmbmac.asp" | parse_json | tr 'A-Z' 'a-z'`
         cat << EOF
-System MAC Address 1      : $mac1
-System MAC Address 2      : $mac2
+System MAC Address 1   : $mac1
+System MAC Address 2   : $mac2
 EOF
     fi
+    if [ -n "$ami_is6" -a "$ami_is6" == 'Megarac' ]; then
+	cat << EOF
+-- FRU readings --
+$(AMI_fru)
+EOF
+   fi
+}
+
+AMI_fru()
+{
+    ipmitool -U $opt_user -P $opt_passwd -H $hostip_nb fru
 }
 
 AMI_mc_reset_cold()
