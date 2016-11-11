@@ -43,7 +43,6 @@ AMI_mc_info()
     local get="$curl -b SessionCookie=$session"
     [ -n "$ext" ] && \
         get="$get -H $ext"
-    $get "http://$hostip/rpc/getfwinfo.asp"
     if [ -n "$ami_is6" ]; then
         eval `$get \
              "http://$hostip/rpc/getfwinfo.asp" | parse_json`
