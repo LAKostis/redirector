@@ -71,7 +71,7 @@ HUAWEI_kvm()
     echo "<html><body>" > $1
     $curl -k -b "session=$session" \
           "https://$hostip/kvmvmm.asp" | awk '/<object/, /<\/object/ { print $0 }' |
-              sed -e 's,WIDTH = "100%",WIDTH = "800",' \
+              $sed -e 's,WIDTH = "100%",WIDTH = "800",' \
                   -e 's,HEIGHT = "100%",HEIGHT = "600",' \
                   -e "s,CODEBASE VALUE =.*,CODEBASE VALUE = \"http://folgaine1.yandex-team.ru/bios\" >," \
                   -e "s,CODEBASE =.*,CODEBASE = \"http://folgaine1.yandex-team.ru/bios\" \\\," >> $1
@@ -87,7 +87,7 @@ HUAWEI_redirect()
         [ "$rc" -eq 0 -o "$rc" -eq 18 ] || return $rc
         s=$(stat -c%s $3)
         s=$(((s - (s * 277) / 10000) / 1024))
-        sed 's,=,= ,g' "$1" | awk "-vpath=$3" -vtimeout=$opt_timeout -vsz=$s '
+        $sed 's,=,= ,g' "$1" | awk "-vpath=$3" -vtimeout=$opt_timeout -vsz=$s '
 $1 == "verifyValue" { value = $3 }
 $1 == "IPA" { ipa = $3 }
 END { print path, ipa, value, sz, timeout }' |
@@ -102,6 +102,6 @@ END { print path, ipa, value, sz, timeout }' |
 HUAWEI_lan_print()
 {
     eval `$curl -k -b "session=$session" \
-         "https://$hostip/snmptrap.asp" | sed -n 's,.*trapcommunity.*value="\([^"]\+\)".*,snmp="\1",p'`
-    ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb lan print | sed "s,SNMP Community.*,SNMP Community String   : $snmp,"
+         "https://$hostip/snmptrap.asp" | $sed -n 's,.*trapcommunity.*value="\([^"]\+\)".*,snmp="\1",p'`
+    ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb lan print | $sed "s,SNMP Community.*,SNMP Community String   : $snmp,"
 }

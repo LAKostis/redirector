@@ -1,0 +1,70 @@
+#!/bin/sh -e
+
+ILO_guess()
+{
+    local ilo=
+    if fgrep -q 'Hewlett Packard Enterprise Development LP' $1; then \
+	fgrep -q '<title>iLO 3</title>' $1 && return 0 ||:
+	# iLO 4 is little bit tricky
+	ilo="$($curl https://$hostip/json/login_session | jq -r .moniker.PRODGEN 2>&1)"
+	[ -n "$ilo" ] && [ "$ilo" == 'iLO 4' ] || return 1
+    fi
+}
+
+ILO_session_open()
+{
+    cookie=
+    session="$($curl -d "{\"method\":\"login\",\"user_login\":\"$opt_user\",\"password\":\"$opt_passwd\"}" https://$hostip/json/login_session| jq -r '.session_key')"
+    [ -n "$session" ] && cookie="sessionUrl=https%253A%2F%2F$hostip%2F;sessionLang=en;sessionKey=$session;irc=last%3Djrc" || session=
+}
+
+ILO_session_close()
+{
+    $curl -b "$cookie" -o /dev/null -d "{\"method\":\"logout\",\"session_key\"=\"$session\"}:\"\"" \
+        https://$hostip/json/login_session
+}
+
+extract_json()
+{
+    local json="$1" shift
+    local key="$2"
+    [ -n "$json" ] && printf '%s\n' "$json" | jq -r ."$key"
+}
+
+ILO_mc_info()
+{
+    json="$($curl -b "$cookie" https://$hostip/json/overview)"
+    cat <<EOF
+
+Product Name              : $(extract_json "$json" product_name)
+Serial Number             : $(extract_json "$json" serial_num)
+Product ID                : $(extract_json "$json" product_id)
+BIOS Version              : $(extract_json "$json" system_rom) $(extract_json "$json" system_rom_date)
+iLO License Type          : $(extract_json "$json" license)
+iLO Firmware Version      : $(extract_json "$json" ilo_fw_version)
+System GUID               : $(extract_json "$json" uuid)
+System Health             : $(extract_json "$json" system_health)
+Power State               : $(extract_json "$json" power)
+Device ID                 : 18
+Manufacturer ID           : 11
+Manufacturer Name         : Hewlett-Packard
+UEFI supported            : $(extract_json "$json" isUEFI)
+EOF
+}
+
+ILO_mc_reset_cold()
+{
+    ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb mc reset cold
+}
+
+ILO_kvm()
+{
+    $curl -b "$cookie" https://$hostip/html/jnlp_template.html | \
+	      $sed -n -e '/<jnlp /,/<\/jnlp>/{ s/<%\=[[:space:]]\+\(this.[^[:space:]]\+\)[[:space:]]%>/\1/g; p; }' >> $1
+              $sed -i -n -e "{s/this\.baseUrl/https:\/\/$hostip\//g;s/this\.sessionKey/$session/g;s/this\.langId/en/g; p;}" $1
+}
+
+ILO_lan_print()
+{
+    ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb lan print
+}

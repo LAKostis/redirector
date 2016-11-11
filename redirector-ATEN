@@ -24,20 +24,28 @@ ATEN_session_close()
 
 ATEN_mc_info()
 {
+    # Get relevant info from ipmitool
+    local mfg_id="$(ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb mc info 2>&1 | $sed -n -e '/^Manufacturer\ ID/,/^Product\ ID/p')"
     eval `$curl -b "SID=$session" \
          -d "GENERIC_INFO.XML=(0,0)" \
          "http://$hostip/cgi/ipmi.cgi" | parse_xml`
     eval `$curl -b "SID=$session" \
          -d "Get_BoradID_XML.XML=(0,0)" \
          "http://$hostip/cgi/ipmi.cgi" | parse_xml`
+    # try to fetch BIOS info (for X10 models)
+    eval `$curl -b "SID=$session" \
+	 -d "Get_PlatformInfo.XML=(0,0)" \
+	 "http://$hostip/cgi/ipmi.cgi" | parse_xml`
     cat <<EOF
-Firmware Revision         : $(echo $GENERIC_IPMIFW_VERSION | sed 's,\(..\),\1.,' | xargs printf "%.2f")
-Firmware Tag              : $GENERIC_IPMIFW_TAG
-Build Time                : $GENERIC_IPMIFW_BLDTIME
-Kernel Version            : $KERNAL_VERSION
-Manufacturer ID           : 47488
-Manufacturer Name         : Unknown (0xB980)
-Product ID                : $(printf "%d" 0x$BoardID_ID) (0x$BoardID_ID)
+BMC Firmware Revision     : $(echo $GENERIC_IPMIFW_VERSION | $sed 's,\(..\),\1.,' | xargs printf "%.2f")
+BMC Firmware Tag          : $GENERIC_IPMIFW_TAG
+BMC Build Time            : $GENERIC_IPMIFW_BLDTIME
+BMC Kernel Version        : $KERNAL_VERSION
+Platform BIOS Version     : ${PLATFORM_INFO_BIOS_VERSION:-$BIOS_VERSION}
+Platform BIOS Build Time  : ${PLATFORM_INFO_BIOS_BUILD_DATE:-N/A}
+Platform CPLD Version     : ${PLATFORM_INFO_CPLD_VERSION:-N/A}
+Platform EC Version       : ${PLATFORM_INFO_EC_VERSION:-N/A}
+$mfg_id
 Product Name              : Unknown (0x$BoardID_ID)
 EOF
 }
@@ -48,7 +56,6 @@ ATEN_mc_reset_cold()
           -b "SID=$session" \
           "http://$hostip/cgi/BMCReset.cgi"
 }
-
 
 ATEN_chk_jnlp()
 {
@@ -82,11 +89,11 @@ ATEN_redirect()
         ATEN_kvm "$1" || rc=$?
         [ "$rc" -eq 0 -o "$rc" -eq 18 ] || return $rc
         s=$(stat -c%s $3)
-        cnt="$(sed -n 's,[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' "$1" | wc -l)"
+        cnt="$($sed -n 's,[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' "$1" | wc -l)"
         rev=r1
         [ "$cnt" -ne 8 ] || rev=r2
-        sed -n 's,[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' "$1" | tr '\n' ' ' |
-            sed "s,^,$3 $(((s - (s * 277) / 10000) / 1024)) $opt_timeout $rev ," |
+        $sed -n 's,[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' "$1" | tr '\n' ' ' |
+            $sed "s,^,$3 $(((s - (s * 277) / 10000) / 1024)) $opt_timeout $rev ," |
                 timeout_pass -9 $((opt_timeout * 60 + 15)) java -cp $java_path/redirector.jar com.redirerctor.ATEN.kvm.Redirector
         ;;
     *)
@@ -104,7 +111,6 @@ ATEN_lan_print()
 
 ATEN_lan_set()
 {
-    local get="$curl -b SID=$session http://$hostip"
     local fmt='+%a%%20%b%%20%d%%20%Y%%20%T%%20GMT%z%%20(%Z)'
     local cnt=0
 
@@ -112,21 +118,90 @@ ATEN_lan_set()
     fwup) shift
         [ -n "$1" ] || error "Image file not specified"
         [ -e "$1" ] || error "File \`$1' not exists"
+        local cookies="langSetFlag=0;language=English;SID=$session;mainpage=maintenance;subpage=main_fw_update"
+        local get="$curl -b $cookies http://$hostip"
         echo -n "Preparing BMC to flash [$session]..."
-        $get/cgi/ipmi.cgi -G -d "LOCK_UPLOAD_FW.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'RES="1"' && echo done || error failed
+	$get/cgi/ipmi.cgi -d "LOCK_UPLOAD_FW.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'RES="1"' && echo done || error failed
         echo -n "Uploading image..."
-        $get/cgi/oem_firmware_upload.cgi -m 300 -H 'Expect:' -f -F "form1=@$1;filename=firmware.bin;type=application/octet-stream" | fgrep -q 'UpgradeFW' && echo done || error failed
-        echo "Flashing..."
-        $get/cgi/oem_firmware_update.cgi -G -d "preserve_config=0&timeStamp=$(LC_ALL=C date "$fmt")" | egrep -q '^ok' || error 'startflash failed'
-        while sleep 10; do
-            percent=`$get/cgi/upgrade_process.cgi -G -d "time_stamp=$(LC_ALL=C date "$fmt")" | sed -n 's,<percent>\([0-9 ]\+\)</percent>,\1,p'` ||:
+	$get/cgi/oem_firmware_upload.cgi -m 300 -H 'Expect:' -f -F "\"form1\"=@$1;filename=\"$(basename $1)\";type=application/octet-stream" | fgrep -q 'btn_upgrade' && echo done || error failed
+	replace=`$get/cgi/ipmi.cgi -d "UPLOAD_FW_VERSION.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | $sed -n 's,.*FW_VERSION\ \(NEW=.*"\)\/.*,\1,p'` || error failed
+	echo "Going to replace FW -> $replace..."
+	echo "Flashing..."
+	fwreply=`$get/cgi/oem_firmware_update.cgi -m 5 -d "preserve_config=1&preserve_sdr=1&timeStamp=$(LC_ALL=C date "$fmt")" ||:`
+	[ -n "$fwreply" ] || error 'startflash failed'
+	case "$fwreply" in
+		ok) percent=`$get/cgi/upgrade_process.cgi -d "fwtype=0&time_stamp=$(LC_ALL=C date "$fmt")" | $sed -n 's,.*<percent>\([0-9 ]\+\)</percent>,\1,p'` ||:
+		    printf "\rCompleted %s%%" "$percent"
+			;;
+		 *) error 'startflash falied'
+			;;
+	esac
+	while sleep 5; do
+            percent=`$get/cgi/upgrade_process.cgi -d "fwtype=0&time_stamp=$(LC_ALL=C date "$fmt")" | $sed -n 's,.*<percent>\([0-9 ]\+\)</percent>,\1,p'` ||:
             printf "\rCompleted %s%%" "$percent"
             [ "$percent" != 100 ] || break
             cnt=$((cnt+1))
-            [ "$cnt" -lt 5 ] || [ -n "$percent" -o "$percent" -ne 0 ] || error failed
+            [ "$cnt" -lt 15 ] || [ -n "$percent" -o "$percent" -ne 0 ] || error failed
         done
         printf "\nFlash complete. Rebooting...\n"
         session=
+        ;;
+     biosup) shift
+        [ -n "$1" ] || error "BIOS file not specified"
+        [ -e "$1" ] || error "File \`$1' not exists"
+        local cookies="langSetFlag=0;language=English;SID=$session;mainpage=maintenance;subpage=main_bios_upload"
+        local get="$curl -b $cookies http://$hostip"
+        echo -n "Preparing BMC to flash [$session]..."
+	$get/cgi/ipmi.cgi -d "BIOS_UPDATE_MISC.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'RES="-1"' && echo done || error failed
+	echo -n "Locking firmware for update..."
+	$get/cgi/ipmi.cgi -d "BIOS_UPLOAD.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'RES="1"' && echo done || error failed
+        echo -n "Uploading image..."
+	$get/cgi/bios_upload.cgi -m 300 -H 'Expect:' -f -F "\"form1\"=@$1;filename=\"$(basename $1)\";type=application/octet-stream" | fgrep -q 'btn_upgrade' && echo done || error failed
+	$get/cgi/ipmi.cgi -d "BIOS_UPDATE_CHECK.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'RES="00"' || error 'Update check failed'
+	biosreplace=`$get/cgi/ipmi.cgi -d "BIOS_REV.XML=&time_stamp=$(LC_ALL=C date "$fmt")"|$sed -n -e '/BIOS_Rev/,/\/>/s,.*\ OldRev\=\([^N]\+\).*NewRev\=\([^>]\+\)\/>.*,Old=\1 New=\2,gp'`
+	if [ -n "$biosreplace" ]; then
+		new=${biosreplace##*New=}
+		old=${biosreplace%%  New=*}
+		old=${old##Old=}
+		if [ "$new" == "$old" ]; then
+                        echo "BIOS versions are the same, exiting..."
+			echo -n "Rebooting BMC..."
+			ATEN_mc_reset_cold && echo "done" || error failed
+			session=
+			return 1
+		else
+			echo "Going to replace |$old| -> |$new|..."
+		fi
+	else
+		echo "Unable to guess BIOS version, exiting..."
+                echo -n "Rebooting BMC..."
+		ATEN_mc_reset_cold && echo "done" || error failed
+		session=
+		return 1
+	fi
+	echo -n "Setting flash options..."
+	$get/cgi/ipmi.cgi -d "BIOS_OPTION.XML=&me_en=1&nve_en=1&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'Res="3"' || error failed
+	# ensure that process is locked
+	$get/cgi/ipmi.cgi -d "BIOS_UPDATE_MISC.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'RES="-1"' && echo done || error failed
+	echo "Flashing..."
+	$get/cgi/bios_update.cgi -m 5 -d "timeStamp=$(LC_ALL=C date "$fmt")" ||:
+        # sometimes there is no 'ok' in reply to blindly poll for progress status (
+	while sleep 5; do
+            percent=`$get/cgi/upgrade_process.cgi -d "fwtype=1&time_stamp=$(LC_ALL=C date "$fmt")" | $sed -n 's,.*<percent>\([0-9 ]\+\)</percent>,\1,p'` ||:
+            printf "\rCompleted %s%%" "$percent"
+            [ "$percent" != 100 ] || break
+            cnt=$((cnt+1))
+            [ "$cnt" -lt 15 ] || [ -n "$percent" -o "$percent" -ne 0 ] || error failed
+        done
+        printf "\nFlash complete. Finalizing things...\n"
+	$get/cgi/ipmi.cgi -d "BIOS_UPDATE_DONE.XML=(1,0)&time_stamp=$(LC_ALL=C date "$fmt")" ||:
+        $get/cgi/ipmi.cgi -d "POWER_INFO.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'POWER STATUS="ON"' || error 'Failed to get power state'
+	echo -n "Unlocking UI..."
+	$get/cgi/ipmi.cgi -d "BIOS_UPDATE_MISC.XML=(1,0)&time_stamp$(LC_ALL=C date "$fmt")" | fgrep -q 'RES="0"' && echo done || error failed
+	echo "Rebooting the system..."
+	$get/cgi/ipmi.cgi -d "POWER_INFO.XML=(1,2)&time_stamp$(LC_ALL=C date "$fmt")" | fgrep -q 'POWER STATUS="ON"' \
+		          && echo 'Please wait up to 5min to complete boot cycle' ||:
+	session=
         ;;
     esac
 }

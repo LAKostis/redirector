@@ -73,7 +73,7 @@ AVCT_redirect()
         AVCT_kvm "$1" VM || rc=$?
         [ "$rc" -eq 0 -o "$rc" -eq 18 ] || return $rc
         s=$(stat -c%s $3)
-        sed -n 's,.*<argument>,,; s,</argument>,,p' "$1" |
+        $sed -n 's,.*<argument>,,; s,</argument>,,p' "$1" |
         timeout_pass -9 $((opt_timeout * 60 + 15)) java -cp $java_path/redirector.jar com.redirector.AVCT.kvm.Redirector iso="$3" maxkb=$(((s - (s * 277) / 10000))) timeout=$((opt_timeout * 60))
 #        cnt="$(sed -n 's,[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' "$1" | wc -l)"
 ##        rev=r1

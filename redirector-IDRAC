@@ -1,0 +1,91 @@
+#!/bin/sh
+
+IDRAC_guess()
+{
+    $curl https://$hostip/login.html| fgrep -q 'iDRAC'
+}
+
+IDRAC_session_open()
+{
+    session=
+    cookie=
+    tokenstr=
+    session="$($curl -v -d "user=${opt_user}&password=${opt_passwd}" "https://$hostip/data/login" 2>&1)"
+    if [ -n "$session" ]; then
+	    cookie=$(echo "$session" | $sed -n -e 's,.*Set-Cookie\:\ \([^\;]\+\)\;.*,\1,gp')
+	    tokenstr=$(echo "$session" |$sed -n -e 's,.*<forwardUrl>index\.html?\([^\ ><]\+\)<\/.*,\1,gp')
+            ST2="${tokenstr##*,ST2=}"
+	    ST1="${tokenstr%%,ST2=*}"
+	    ST1=${ST1##ST1=}
+	    get="$curl -H ST2:$ST2"
+    fi
+}
+
+get_data()
+{
+     $get -b "$cookie; tokenvalue=$ST1" "https://$hostip/data?get=pwState,sysDesc,sysRev,svcTag,iDSDMVersion,v4Enabled,v4IPAddr,v6Enabled,v6LinkLocal,v6Addr,v6SiteLocal,macAddr,dnsDomain,devLocInfo,osVersion,intrusion,powerSupplies,RecentEventLogEntries,GetRecentWorknotes,lcdChassisStatus,hostEventStatus,lcdEventStatus"
+}
+
+get_inv()
+{
+     $get -b "$cookie; tokenvalue=$ST1" -G "https://$hostip/sysmgmt/2012/server/inventory/software"
+}
+
+parse_inv_xml()
+{
+     local inv="$1"; shift
+     $sed -n -e "/<Device\ .*display\=\\\"$inv\\\"/,/<\/Device>/p" | parse_xml
+}
+
+IDRAC_mc_reset_cold()
+{
+     ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb mc reset cold
+}
+
+IDRAC_mc_info()
+{
+     # get_inventory
+     local inv=$(get_inv)
+     local data=$(get_data)
+     cat <<EOF
+iDRAC Firmware Revision   : $(echo "$inv"|parse_inv_xml 'Lifecycle\ Controller' |$sed -n -e 's,.*Application_version\=\"\([^;]\+\)";.*,\1,gp')
+iDRAC Build Time          : $(echo "$inv"|parse_inv_xml 'Lifecycle\ Controller' |$sed -n -e 's,.*Device_TimeStamp\="\([^;]\+\)";.*,\1,gp')
+BIOS Revision             : $(echo "$inv"|parse_inv_xml 'BIOS' |$sed -n -e 's,.*Application_version\="\([^;]\+\)";.*,\1,gp')
+BIOS Timestamp            : $(echo "$inv"|parse_inv_xml 'BIOS' |$sed -n -e 's,.*Device_TimeStamp\="\([^;]\+\)";.*,\1,gp')
+Power State               : $(echo "$data"|$sed -n -e 's,1,Power on,g;s,0,Power off,g;s,.*pwState>\([^<\/]\+\)<.*,\1,gp')
+System Description        : $(echo "$data"|$sed -n -e 's,.*sysDesc>\([^<\/]\+\)<.*,\1,gp')
+System Revision           : $(echo "$data"|$sed -n -e 's,.*sysRev>\([^<\/]\+\)<.*,\1,gp')
+System Tag                : $(echo "$data"|$sed -n -e 's,.*svcTag>\([^<\/]\+\)<.*,\1,gp')
+Chassis Name              : $(echo "$data"|$sed -n -e 's,.*devChassis>\([^<\/]\+\)<.*,\1,gp')
+Chassis Tag               : $(echo "$data"|$sed -n -e 's,.*devChassisServiceTag>\([^<\/]\+\)<.*,\1,gp')
+Chassis Model             : $(echo "$data"|$sed -n -e 's,.*devChassisModel>\([^<\/]\+\)<.*,\1,gp')
+Blade Slot                : $(echo "$data"|$sed -n -e 's,.*devBladeSlot>\([^<\/]\+\)<.*,\1,gp')
+EOF
+}
+
+IDRAC_kvm()
+{
+    local hostname=
+    local sysdesc=
+    # FIXME
+    local slot=
+    local data=
+    # we need the following from get_data:
+    # hostname
+    # SysDesc
+    # BladeSlot
+    data=$(get_data)
+    [ -n "$data" ] || error 'Unable to get session data!'
+    hostname="$(echo "$data"|$sed -n -e 's,.*hostname>\([^<\/]\+\)<.*,\1,gp')"
+    sysdesc="$(echo "$data"|$sed -n -e 's,\ ,+,g;s,.*sysDesc>\([^<\/]\+\)<.*,\1,gp')"
+    slot="$(echo "$data"|$sed -n -e 's,.*BladeSlot>\([^<\/]\+\)<.*,\1,gp')"
+
+    $curl "https://$hostip/viewer.jnlp($hostip@0@$hostname%2C+$sysdesc%2C++Slot+$slot%2C+User%3A+$opt_user@$(LC_ALL=C date +%s)@ST1=$ST1)" \
+          -e "https://$hostip/sysSummaryData.html" -b "$cookie; tokenvalue=$ST1" > $1
+}
+
+IDRAC_session_close()
+{
+    $curl -b "$cookie" -L -o /dev/null -G https://$hostip/data/logout
+}
+
