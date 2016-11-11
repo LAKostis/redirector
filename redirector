@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/usr/bin/env bash -e
 
 tool_path=${0%/*}
 java_path=${0%/*}/src
@@ -62,17 +62,23 @@ run_bmc()
     eval ${BMC}_${func} $@
 }
 
-# needs gnu-getopt on MacOS/*BSD
-getopt="/usr/local/Cellar/gnu-getopt/1.1.6/bin/getopt"
-TEMP=`$getopt -o 46bU:P:I:H:t:h -n "redirector" -- "$@" || usage 1>&2`
-
-eval set -- "$TEMP"
-
 BMC=
 timeout=60
 curl="curl -gqsk --compressed -m $timeout"
 # needs gnu-sed on MacOS/*BSD
-sed="gsed"
+sed="sed"
+
+SED_VERSION=$($sed --version 2>/dev/null)
+if [[ $? -ne 0 ]]; then
+	# It's 100% not GNU Sed
+	sed="gsed"
+else
+	echo "${SED_VERSION}" | head -n 1 | grep -q "GNU"
+	if [[ $? -ne 0 ]]; then
+		sed="gsed"
+	fi
+fi
+
 # xargs doesn't have -r on MacOS/*BSD
 xargs="xargs"
 
@@ -81,38 +87,31 @@ opt_timeout=5
 opt_family=
 opt_user=ADMIN
 opt_passwd=ADMIN
-while :; do
-    case "$1" in
-    -4) opt_family=A
+while getopts "46bU:P:I:H:t:h" opt; do
+    case "${opt}" in
+    4) opt_family=A
         ;;
-    -6) opt_family=AAAA
+    6) opt_family=AAAA
         ;;
-    -b) opt_family=PRF_A  #prefer A first, then AAAA
+    b) opt_family=PRF_A  #prefer A first, then AAAA
         ;;
-    -t) shift
-        opt_timeout="$1"
+    t) opt_timeout="$OPTARG"
         ;;
-    -U) shift
-        opt_user="$1"
+    U) opt_user="$OPTARG"
         ;;
-    -P) shift
-        opt_passwd="$1"
+    P) opt_passwd="$OPTARG"
         ;;
-    -H) shift
-        opt_host="$1"
+    H) opt_host="$OPTARG"
         ;;
-    -I) shift
-        # For compatibility only. Skip interface type
+    I) # For compatibility only. Skip interface type
         ;;
-    -h)
+    h)
         usage 0
         ;;
-    --) shift
-        break
-        ;;
     esac
-    shift
 done
+
+shift "$((OPTIND - 1))"
 
 [ -n "$opt_host" ] || error "Host not specified"
 
