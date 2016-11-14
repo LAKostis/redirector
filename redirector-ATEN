@@ -32,6 +32,10 @@ ATEN_mc_info()
     eval `$curl -b "SID=$session" \
          -d "Get_BoradID_XML.XML=(0,0)" \
          "http://$hostip/cgi/ipmi.cgi" | parse_xml`
+    # power status
+    eval `$curl -b "SID=$session" \
+	 -d "POWER_INFO.XML=(0,0)" \
+         "http://$hostip/cgi/ipmi.cgi" | parse_xml`
     # try to fetch BIOS info (for X10 models)
     eval `$curl -b "SID=$session" \
 	 -d "Get_PlatformInfo.XML=(0,0)" \
@@ -41,10 +45,24 @@ BMC Firmware Revision     : $(echo $GENERIC_IPMIFW_VERSION | $sed 's,\(..\),\1.,
 BMC Firmware Tag          : $GENERIC_IPMIFW_TAG
 BMC Build Time            : $GENERIC_IPMIFW_BLDTIME
 BMC Kernel Version        : $KERNAL_VERSION
-Platform BIOS Version     : ${PLATFORM_INFO_BIOS_VERSION:-$BIOS_VERSION}
-Platform BIOS Build Time  : ${PLATFORM_INFO_BIOS_BUILD_DATE:-N/A}
+EOF
+    local bios="N/A"
+    local biosdate="N/A"
+    case "$PLATFORM_INFO_BIOS_VERSION_EXIST" in
+	 1) bios="$PLATFORM_INFO_BIOS_VERSION"
+            biosdate="$PLATFORM_INFO_BIOS_BUILD_DATE"
+            ;;
+    esac
+    case "$BIOS_VERSION_EXIST" in
+	 1) bios="$BIOS_VERSION"
+	    ;;
+    esac
+    cat <<EOF
+Platform BIOS Version     : $bios
+Platform BIOS Build Time  : $biosdate
 Platform CPLD Version     : ${PLATFORM_INFO_CPLD_VERSION:-N/A}
 Platform EC Version       : ${PLATFORM_INFO_EC_VERSION:-N/A}
+Platform Power status     : ${POWER_STATUS:-N/A}
 $mfg_id
 Product Name              : Unknown (0x$BoardID_ID)
 EOF
