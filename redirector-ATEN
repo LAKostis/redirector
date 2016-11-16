@@ -120,6 +120,11 @@ ATEN_redirect()
     esac
 }
 
+ATEN_sol()
+{
+    ipmitool -I lanplus -H $hostip_nb -p 623 -U $opt_user -P $opt_passwd sol activate
+}
+
 ATEN_lan_print()
 {
     # CONFIG_INFO.XML
@@ -182,7 +187,7 @@ ATEN_lan_set()
 		old=${biosreplace%%  New=*}
 		old=${old##Old=}
 		if [ "$new" == "$old" ]; then
-                        echo "BIOS versions are the same, exiting..."
+                       echo "BIOS versions are the same, exiting..."
 			echo -n "Rebooting BMC..."
 			ATEN_mc_reset_cold && echo "done" || error failed
 			session=

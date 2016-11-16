@@ -29,6 +29,7 @@ Commands:
     sel           Print System Event Log (SEL)
     user          Configure Management Controller users
     kvm           Launch KVM session
+    sol           Launch Serial Console (SOL)
     redir         Start redirection
 
 USAGE
@@ -305,6 +306,11 @@ cmd_user()
 cmd_sel()
 {
     echo "Not implemented"
+}
+
+cmd_sol()
+{
+    run_bmc sol
 }
 
 timeout_pass()
