@@ -53,15 +53,16 @@ EOF
             biosdate="$PLATFORM_INFO_BIOS_BUILD_DATE"
             ;;
     esac
-    case "$BIOS_VERSION_EXIST" in
-	 1) bios="$BIOS_VERSION"
-	    ;;
-    esac
+    if [ -n "$BIOS_VERSION" -a "$BIOS_VERSION" != ' ' ]; then
+	    bios="$BIOS_VERSION"
+	    biosdate="$PLATFORM_INFO_BIOS_BUILD_DATE"
+    fi
     cat <<EOF
 Platform BIOS Version     : $bios
 Platform BIOS Build Time  : $biosdate
 Platform CPLD Version     : ${PLATFORM_INFO_CPLD_VERSION:-N/A}
 Platform EC Version       : ${PLATFORM_INFO_EC_VERSION:-N/A}
+Platform RedFish Version  : ${PLATFORM_INFO_REDFISH_REV-N/A}
 Platform Power status     : ${POWER_STATUS:-N/A}
 $mfg_id
 Product Name              : Unknown (0x$BoardID_ID)
