@@ -107,13 +107,13 @@ ATEN_redirect()
     cdrom)
         ATEN_kvm "$1" || rc=$?
         [ "$rc" -eq 0 -o "$rc" -eq 18 ] || return $rc
-        s=$(stat -c%s $3)
+        s=$($stat $3)
         cnt="$($sed -n 's,[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' "$1" | wc -l)"
         rev=r1
         [ "$cnt" -ne 8 ] || rev=r2
         $sed -n 's,[[:space:]]*<argument>\([^<]\+\)</argument>,\1,p' "$1" | tr '\n' ' ' |
             $sed "s,^,$3 $(((s - (s * 277) / 10000) / 1024)) $opt_timeout $rev ," |
-                timeout_pass -9 $((opt_timeout * 60 + 15)) java -cp $java_path/redirector.jar com.redirerctor.ATEN.kvm.Redirector
+                timeout_pass -9 $((opt_timeout * 60 + 15)) java -cp $java_path/redirector.jar com.redirector.ATEN.kvm.Redirector
         ;;
     *)
         error "Redirection for $2 not supported"
@@ -149,7 +149,26 @@ ATEN_lan_set()
         echo -n "Uploading image..."
 	$get/cgi/oem_firmware_upload.cgi -m 300 -H 'Expect:' -f -F "\"form1\"=@$1;filename=\"$(basename $1)\";type=application/octet-stream" | fgrep -q 'btn_upgrade' && echo done || error failed
 	replace=`$get/cgi/ipmi.cgi -d "UPLOAD_FW_VERSION.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | $sed -n 's,.*FW_VERSION\ \(NEW=.*"\)\/.*,\1,p'` || error failed
-	echo "Going to replace FW -> $replace..."
+	if [ -n "$replace" ]; then
+		new=${replace%% OLD=*}
+		old=${replace##*OLD=}
+		new=${new#NEW=}
+		if [ "$new" == "$old" ]; then
+                       echo "BMC versions are the same, exiting..."
+			echo -n "Rebooting BMC..."
+			ATEN_mc_reset_cold && echo "done" || error failed
+			session=
+			return 1
+		else
+			echo "Going to replace fw $old -> $new..."
+		fi
+	else
+		echo "Unable to guess BMC version, exiting..."
+                echo -n "Rebooting BMC..."
+		ATEN_mc_reset_cold && echo "done" || error failed
+		session=
+		return 1
+	fi
 	echo "Flashing..."
 	fwreply=`$get/cgi/oem_firmware_update.cgi -m 5 -d "preserve_config=1&preserve_sdr=1&timeStamp=$(LC_ALL=C date "$fmt")" ||:`
 	[ -n "$fwreply" ] || error 'startflash failed'
