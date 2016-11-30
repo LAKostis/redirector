@@ -40,6 +40,10 @@ ATEN_mc_info()
     eval `$curl -b "SID=$session" \
 	 -d "Get_PlatformInfo.XML=(0,0)" \
 	 "http://$hostip/cgi/ipmi.cgi" | parse_xml`
+    # try to fetch POST CODE
+    eval `$curl -b "SID=$session" \
+	 -d "SNOOPING.XML=(0,0)" \
+	 "http://$hostip/cgi/ipmi.cgi" | parse_xml`
     cat <<EOF
 BMC Firmware Revision     : $(echo $GENERIC_IPMIFW_VERSION | $sed 's,\(..\),\1.,' | xargs printf "%.2f")
 BMC Firmware Tag          : $GENERIC_IPMIFW_TAG
@@ -61,6 +65,7 @@ EOF
     cat <<EOF
 Platform BIOS Version     : $bios
 Platform BIOS Build Time  : $biosdate
+Platform BIOS POST code   : ${POST_CODE:-N/A}
 Platform CPLD Version     : ${PLATFORM_INFO_CPLD_VERSION:-$PLATFORM_INFO_CPLD_REV}
 Platform EC Version       : ${PLATFORM_INFO_EC_VERSION:-N/A}
 Platform RedFish Version  : ${PLATFORM_INFO_REDFISH_REV:-$REDFISH_REV}
