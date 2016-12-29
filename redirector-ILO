@@ -2,7 +2,17 @@
 
 ILO_guess()
 {
-    local ilo=
+    ilo=
+    if fgrep -q 'Copyright 2001, 2015 Hewlett-Packard Development Company, L.P.' $1; then \
+	if fgrep -q '<TITLE>HP Integrated Lights-Out 2 Login</TITLE>' $1; then
+		ilo='iLO 2'
+		hpsession=$(cat $1 | $sed -n -e 's/.*sessionkey=\([^;]\+\);.*/\1/gp')
+		hpsindex=$(cat $1 | $sed -n -e 's/.*sessionindex=\([^;]\+\);.*/\1/gp')
+		[ -n $hpsession ] && hpsession=$(echo $hpsession|$sed -e 's/"//g')
+		[ -n $hpsindex ] && hpsindex=$(echo $hpsindex|$sed -e 's/"//g')
+		return 0
+	fi
+    fi
     if fgrep -q 'Hewlett Packard Enterprise Development LP' $1; then \
 	fgrep -q '<title>iLO 3</title>' $1 && return 0 ||:
 	# iLO 4 is little bit tricky
@@ -14,14 +24,27 @@ ILO_guess()
 ILO_session_open()
 {
     cookie=
-    session="$($curl -d "{\"method\":\"login\",\"user_login\":\"$opt_user\",\"password\":\"$opt_passwd\"}" https://$hostip/json/login_session| jq -r '.session_key')"
-    [ -n "$session" ] && cookie="sessionUrl=https%253A%2F%2F$hostip%2F;sessionLang=en;sessionKey=$session;irc=last%3Djrc" || session=
+    # iLO uses completely different approach
+    if [ "$ilo" == 'iLO 2' ]; then
+	    opt_user=$(printf '%s' $opt_user|base64)
+	    opt_passwd=$(printf '%s' $opt_passwd|base64)
+	    cookie="hp-iLO-Login=$hpsindex:$opt_user:$opt_passwd:$hpsession"
+	    session="$($curl -L -b $cookie -e "https://$hostip/login.htm" "https://$hostip/index.htm")"
+	    echo "$session" | fgrep -q 'ie_index.htm' && cookie="hp-iLO-Session=$hpsindex:::$hpsession" || session=
+    else
+	    session="$($curl -d "{\"method\":\"login\",\"user_login\":\"$opt_user\",\"password\":\"$opt_passwd\"}" https://$hostip/json/login_session| jq -r '.session_key')"
+	    [ -n "$session" ] && cookie="sessionUrl=https%253A%2F%2F$hostip%2F;sessionLang=en;sessionKey=$session;irc=last%3Djrc" || session=
+    fi
 }
 
 ILO_session_close()
 {
-    $curl -b "$cookie" -o /dev/null -d "{\"method\":\"logout\",\"session_key\"=\"$session\"}:\"\"" \
-        https://$hostip/json/login_session
+    if [ "$ilo" == 'iLO 2' ]; then
+	    $curl -b "$cookie" -o /dev/null https://$hostip/logout.htm
+    else
+	    $curl -b "$cookie" -o /dev/null -d "{\"method\":\"logout\",\"session_key\"=\"$session\"}:\"\"" \
+		https://$hostip/json/login_session
+    fi
 }
 
 extract_json()
@@ -33,7 +56,13 @@ extract_json()
 
 ILO_mc_info()
 {
+    if [ "$ilo" == 'iLO 2' ]; then
+	    sysinfo=$($curl -b $cookie -e "https://$hostip/ie_index.htm" "https://$hostip/dqstat.htm" | \
+		    $sed -n -e '/currentUser=\"Administrator\"/,/function ButtonManager/{s/^function\ .*//g;s/<.*>//g;p;}')
+	    return 0
+    fi
     json="$($curl -b "$cookie" https://$hostip/json/overview)"
+    license_json="$($curl -b "$cookie" https://$hostip/json/license_info)"
     cat <<EOF
 
 Product Name              : $(extract_json "$json" product_name)
@@ -41,6 +70,7 @@ Serial Number             : $(extract_json "$json" serial_num)
 Product ID                : $(extract_json "$json" product_id)
 BIOS Version              : $(extract_json "$json" system_rom) $(extract_json "$json" system_rom_date)
 iLO License Type          : $(extract_json "$json" license)
+iLO License Status        : $(extract_json "$license_json" type)
 iLO Firmware Version      : $(extract_json "$json" ilo_fw_version)
 System GUID               : $(extract_json "$json" uuid)
 System Health             : $(extract_json "$json" system_health)
