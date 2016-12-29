@@ -10,7 +10,7 @@ ATEN_session_open()
     local SID
     eval `$curl -f -c - -X POST \
          -d "name=$opt_user&pwd=$opt_passwd" \
-         "http://$hostip/cgi/login.cgi" | parse_cookie`
+         "https://$hostip/cgi/login.cgi" | parse_cookie`
     session=$SID
     [ "$session" != 'Failure_Login_IPMI_Then_LDAP_then_Active_Directory' ] || session=
 }
@@ -19,7 +19,7 @@ ATEN_session_close()
 {
     $curl -o /dev/null \
           -b "SID=$session" \
-          "http://$hostip/cgi/logout.cgi"
+          "https://$hostip/cgi/logout.cgi"
 }
 
 ATEN_mc_info()
@@ -28,22 +28,22 @@ ATEN_mc_info()
     local mfg_id="$(ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb mc info 2>&1 | $sed -n -e '/^Manufacturer\ ID/,/^Product\ ID/p')"
     eval `$curl -b "SID=$session" \
          -d "GENERIC_INFO.XML=(0,0)" \
-         "http://$hostip/cgi/ipmi.cgi" | parse_xml`
+         "https://$hostip/cgi/ipmi.cgi" | parse_xml`
     eval `$curl -b "SID=$session" \
          -d "Get_BoradID_XML.XML=(0,0)" \
-         "http://$hostip/cgi/ipmi.cgi" | parse_xml`
+         "https://$hostip/cgi/ipmi.cgi" | parse_xml`
     # power status
     eval `$curl -b "SID=$session" \
 	 -d "POWER_INFO.XML=(0,0)" \
-         "http://$hostip/cgi/ipmi.cgi" | parse_xml`
+         "https://$hostip/cgi/ipmi.cgi" | parse_xml`
     # try to fetch BIOS info (for X10 models)
     eval `$curl -b "SID=$session" \
 	 -d "Get_PlatformInfo.XML=(0,0)" \
-	 "http://$hostip/cgi/ipmi.cgi" | parse_xml`
+	 "https://$hostip/cgi/ipmi.cgi" | parse_xml`
     # try to fetch POST CODE
     eval `$curl -b "SID=$session" \
 	 -d "SNOOPING.XML=(0,0)" \
-	 "http://$hostip/cgi/ipmi.cgi" | parse_xml`
+	 "https://$hostip/cgi/ipmi.cgi" | parse_xml`
     cat <<EOF
 BMC Firmware Revision     : $(echo $GENERIC_IPMIFW_VERSION | $sed 's,\(..\),\1.,' | xargs printf "%.2f")
 BMC Firmware Tag          : $GENERIC_IPMIFW_TAG
@@ -60,7 +60,9 @@ EOF
 	    bios="$BIOS_VERSION"
 	    biosdate="$PLATFORM_INFO_BIOS_BUILD_DATE"
     fi
-    [ -n "$REDFISH_REV" ] || REDFISH_REV='N/A'
+    [ -n "$REDFISH_REV" ] || \
+	    REDFISH_REV=$($curl -f https://$hostip/redfish/v1/|jq -r .RedfishVersion -)
+    [ -z "$REDFISH_REV" -o "$REDFISH_REV" == 'null' ] && REDFISH_REV=N/A
     [ -n "$PLATFORM_INFO_CPLD_REV" ] || PLATFORM_INFO_CPLD_REV='N/A'
     cat <<EOF
 Platform BIOS Version     : $bios
@@ -79,7 +81,7 @@ ATEN_mc_reset_cold()
 {
     $curl -o /dev/null \
           -b "SID=$session" \
-          "http://$hostip/cgi/BMCReset.cgi"
+          "https://$hostip/cgi/BMCReset.cgi"
 }
 
 ATEN_chk_jnlp()
@@ -91,18 +93,18 @@ ATEN_kvm()
 {
     $curl -f -o "$1" \
 		  -b "SID=$session" \
-		  "http://$hostip/cgi/Build_jnlp.cgi" && ATEN_chk_jnlp "$1" ||
+		  "https://$hostip/cgi/Build_jnlp.cgi" && ATEN_chk_jnlp "$1" ||
 	$curl -f -o "$1" \
 		  -b "SID=$session" \
-		  "http://$hostip/jnlp/sess_${session}.jnlp" && ATEN_chk_jnlp "$1" ||
+		  "https://$hostip/jnlp/sess_${session}.jnlp" && ATEN_chk_jnlp "$1" ||
 	$curl -f -o "$1" \
 		  -b "SID=$session" \
-                  -H "Referer: http://$hostip/cgi/url_redirect.cgi?url_name=man_ikvm" \
-		  "http://$hostip/cgi/url_redirect.cgi?url_name=sess_${session}&url_type=jwsk" && ATEN_chk_jnlp "$1" ||
+                  -H "Referer: https://$hostip/cgi/url_redirect.cgi?url_name=man_ikvm" \
+		  "https://$hostip/cgi/url_redirect.cgi?url_name=sess_${session}&url_type=jwsk" && ATEN_chk_jnlp "$1" ||
         $curl -f -o "$1" \
                   -b "SID=$session" \
-                  -H "Referer: http://$hostip/cgi/url_redirect.cgi?url_name=man_ikvm" \
-                  "http://$hostip/cgi/url_redirect.cgi?url_name=ikvm&url_type=jwsk" && ATEN_chk_jnlp "$1" || return $?
+                  -H "Referer: https://$hostip/cgi/url_redirect.cgi?url_name=man_ikvm" \
+                  "https://$hostip/cgi/url_redirect.cgi?url_name=ikvm&url_type=jwsk" && ATEN_chk_jnlp "$1" || return $?
 
 }
 
@@ -149,7 +151,7 @@ ATEN_lan_set()
         [ -n "$1" ] || error "Image file not specified"
         [ -e "$1" ] || error "File \`$1' not exists"
         local cookies="langSetFlag=0;language=English;SID=$session;mainpage=maintenance;subpage=main_fw_update"
-        local get="$curl -b $cookies http://$hostip"
+        local get="$curl -b $cookies https://$hostip"
         echo -n "Preparing BMC to flash [$session]..."
 	$get/cgi/ipmi.cgi -d "LOCK_UPLOAD_FW.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'RES="1"' && echo done || error failed
         echo -n "Uploading image..."
@@ -199,7 +201,7 @@ ATEN_lan_set()
         [ -n "$1" ] || error "BIOS file not specified"
         [ -e "$1" ] || error "File \`$1' not exists"
         local cookies="langSetFlag=0;language=English;SID=$session;mainpage=maintenance;subpage=main_bios_upload"
-        local get="$curl -b $cookies http://$hostip"
+        local get="$curl -b $cookies https://$hostip"
         echo -n "Preparing BMC to flash [$session]..."
 	$get/cgi/ipmi.cgi -d "BIOS_UPDATE_MISC.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")" | fgrep -q 'RES="-1"' && echo done || error failed
 	echo -n "Locking firmware for update..."
