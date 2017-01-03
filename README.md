@@ -1,11 +1,30 @@
 # redirector
-Manage propietary iKVM functionality from command line.
+Proprietary BMC functions via unified CLI.
 
-This is a fork of Anton Kachalov (mouse@) redirector project wich was initially created for internal needs in Yandex LLC: different and cheap servers without proper BMC management tools often with flacky UI only.
+This is a fork of Anton Kachalov (mouse@) [redirector
+project](https://github.com/ya-mouse/redirector) wich was initially created for
+internal needs in Yandex LLC: different and cheap servers without proper BMC
+management tools often with flacky UI only.
 
-In case of our hardware there was a need to have easy way to get a iKVM console (do not differ with SOL) and most of the time process looks as a quest: you need to open BMC UI, confirm all security warnings, sometimes even downgrade a browser, then click n-times to get a right menu entry, then download java applet and click again to confirm OS security enforcements and at last all java questions. Sounds easy, huh?
+In case of our hardware there was a need to have easy way to get a iKVM console
+(do not differ with SOL) and most of the time process looks as a quest:
 
-But with redirector you need only working java and some common unix tools like GNU sed, jq and GNU getopt (in case of MacOS). Then just run one CLI command and script will do all magic for you:
+* you need to open BMC UI, confirm all security warnings, (might even downgrade
+  a browser)
+* click n-times to get a right menu entry
+* then download java applet
+* click again n-times to confirm OS security enforcements
+* click n-times to override all java security enforcements
+
+Sounds easy, huh?
+
+Or let's say you need to change some options by ticking/unticking them in UI
+and you need this for 1000+ servers? And there's no way to do that via
+ipmitool?
+
+But with redirector you need only working java and some common unix tools like
+GNU sed, jq and GNU getopt (in case of MacOS). Then just run one CLI command
+and script will do all magic for you:
 
  * login into BMC UI
  * find the right menu entry and fill all options
@@ -13,14 +32,27 @@ But with redirector you need only working java and some common unix tools like G
  * invoke java with needed parameters
  * do a garbage collection after work
 
-script itlsef able to detect variety of BMC hardware so you just need to provide a correct BMC ip and login credentials.
+Script itlsef able to detect variety of BMC hardware so you just need to
+provide a correct BMC ip and login credentials.
 
 ## System requirements
 * GNU sed
 * GNU getopt
-* jq
+* [jq](https://stedolan.github.io/jq) (optional)
 * ipmitool
 * curl
+* java runtime (optional)
+
+## BMC supported
+* ATEN (Supermicro)
+* iDRAC (DELL)
+* iLO 3/4 (HP), iLO 2 unsupported
+* HP (non-iLO variants)
+* AMI (HP Cloud Compute servers)
+* HUAWEI
+
+Most supported variants are ATEN and iDRAC/iLO, AMI (more or less) and the rest
+is provided as-is, so I can't guarantee that it even work.
 
 ## Use cases
 
@@ -28,7 +60,7 @@ script itlsef able to detect variety of BMC hardware so you just need to provide
 
 Example session run:
 ```
-$ ./redirector -U Administrator -P <BMC password> -H <some BMC ip> kvm
+$ ./redirector -U ADMIN -P <BMC password> -H <some BMC ip> kvm
 
 Java HotSpot(TM) 64-Bit Server VM warning: ignoring option PermSize=32M; support was removed in 8.0
 
@@ -43,7 +75,7 @@ As you see, the applet fully functional and usable outside of BMC UI.
 
 Another example with ipmitool-like 'mc info' for Supermicro HW:
 ```
-$ ./redirector -U Administrator -P <BMC password> -H <some BMC ip> mc info
+$ ./redirector -U ADMIN -P <BMC password> -H <some BMC ip> mc info
 BMC Firmware Revision     : 2.29
 BMC Firmware Tag          : BL_SUPERMICRO_X7SB3_2015-11-13_B
 BMC Build Time            : 11/13/2015
@@ -62,7 +94,7 @@ Product Name              : Unknown (0x87f)
 
 And the killer feature - ability to do BMC/BIOS upgrades on Supermicro:
 ```
-$ ./redirector -U Administrator -P XXXXXX -H XXXXXX lan set biosup ~/Downloads/SM_BIOS/X10DRFG5.C17/UEFI/X10DRFG5.C17
+$ ./redirector -U ADMIN -P XXXXXX -H XXXXXX lan set biosup ~/Downloads/SM_BIOS/X10DRFG5.C17/UEFI/X10DRFG5.C17
 
 Preparing BMC to flash [ygtaffhrjwdxpksb]...done
 
@@ -86,4 +118,3 @@ Rebooting the system...
 
 Please wait up to 5min to complete boot cycle
 ```
-But script itself is not limited to Supermicro, it supports iLO (both 3 and 4) and iDRAC at some level (kvm/BMC reboot/mc info).
