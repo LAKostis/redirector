@@ -80,7 +80,7 @@ Power State               : $(extract_json "$json" power)
 Device ID                 : 18
 Manufacturer ID           : 11
 Manufacturer Name         : Hewlett-Packard
-UEFI supported            : $(extract_json "$json" isUEFI)
+UEFI supported            : $([ "$ilo" == 'iLO 4' ] && $(extract_json "$json" isUEFI) || echo 'N/A')
 EOF
 }
 
