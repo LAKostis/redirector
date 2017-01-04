@@ -32,16 +32,21 @@ and script will do all magic for you:
  * invoke java with needed parameters
  * do a garbage collection after work
 
-Script itlsef able to detect variety of BMC hardware so you just need to
+Script able to detect variety of BMC hardware so you just need to
 provide a correct BMC ip and login credentials.
 
 ## System requirements
+* Bash shell (due bashisms inside)
 * GNU sed
 * GNU getopt
 * [jq](https://stedolan.github.io/jq) (optional)
 * ipmitool
 * curl
 * java runtime (optional)
+
+## Supported OSes
+* MacOS (with homebrew installed)
+* Linux/\*NIX
 
 ## BMC supported
 * ATEN (Supermicro)
@@ -51,8 +56,9 @@ provide a correct BMC ip and login credentials.
 * AMI (HP Cloud Compute servers)
 * HUAWEI
 
-Most supported variants are ATEN and iDRAC/iLO, AMI (more or less) and the rest
-is provided as-is, so I can't guarantee that it even work.
+Most supported BMC variants are ATEN and iDRAC/iLO, AMI (more or less) and the
+rest is provided as-is, so I can't guarantee that it even work. It doesn't mean
+there're abadoned, they just need testers/maintainers.
 
 ## Use cases
 
