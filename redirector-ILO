@@ -59,6 +59,8 @@ extract_json()
 
 ILO_mc_info()
 {
+    local license=
+    local uefi=
     if [ "$ilo" == 'iLO 2' ]; then
 	    sysinfo=$($curl -b $cookie -e "https://$hostip/ie_index.htm" "https://$hostip/dqstat.htm" | \
 		    $sed -n -e '/currentUser=\"Administrator\"/,/function ButtonManager/{s/^function\ .*//g;s/<.*>//g;p;}')
@@ -68,6 +70,10 @@ ILO_mc_info()
     license_json="$($curl -b "$cookie" https://$hostip/json/license)"
     [ -n "$license_json" ] || \
 	    license_json="$($curl -b "$cookie" https://$hostip/json/license_info)"
+    license="$(extract_json "$license_json" type)"
+    [ $license == 'null' ] && license="$(extract_json "$license_json" eval)"
+    uefi="$(extract_json "$json" isUEFI)"
+    [ $uefi == 'null' ] && uefi='N/A'
     cat <<EOF
 
 Product Name              : $(extract_json "$json" product_name)
@@ -75,7 +81,7 @@ Serial Number             : $(extract_json "$json" serial_num)
 Product ID                : $(extract_json "$json" product_id)
 BIOS Version              : $(extract_json "$json" system_rom) $(extract_json "$json" system_rom_date)
 iLO License Type          : $(extract_json "$json" license)
-iLO License Status        : $(extract_json "$license_json" type)
+iLO License Status        : $license
 iLO Firmware Version      : $(extract_json "$json" ilo_fw_version)
 System GUID               : $(extract_json "$json" uuid)
 System Health             : $(extract_json "$json" system_health)
@@ -83,7 +89,7 @@ Power State               : $(extract_json "$json" power)
 Device ID                 : 18
 Manufacturer ID           : 11
 Manufacturer Name         : Hewlett-Packard
-UEFI supported            : $([ "$ilo" == 'iLO 4' ] && extract_json "$json" isUEFI || echo 'N/A')
+UEFI supported            : $uefi
 EOF
 }
 
