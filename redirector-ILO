@@ -17,6 +17,8 @@ ILO_guess()
 	ilo='iLO 3'
 	fgrep -q '<title>iLO 3</title>' $1 && return 0 ||:
 	# iLO 4 is little bit tricky
+	ilo='iLO 4'
+	fgrep -q '<title>iLO 4</title>' $1 && return 0 ||:
 	ilo="$($curl https://$hostip/json/login_session | jq -r .moniker.PRODGEN 2>&1)"
 	[ -n "$ilo" ] && [ "$ilo" == 'iLO 4' ] || return 1
     fi
@@ -63,8 +65,9 @@ ILO_mc_info()
 	    return 0
     fi
     json="$($curl -b "$cookie" https://$hostip/json/overview)"
-    license_json="$($curl -b "$cookie" https://$hostip/json/license_info)"
-    [ "$ilo" == 'iLO 3' ] && license_json="$($curl -b "$cookie" https://$hostip/json/license)"
+    license_json="$($curl -b "$cookie" https://$hostip/json/license)"
+    [ -n "$license_json" ] || \
+	    license_json="$($curl -b "$cookie" https://$hostip/json/license_info)"
     cat <<EOF
 
 Product Name              : $(extract_json "$json" product_name)
