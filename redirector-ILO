@@ -110,42 +110,87 @@ ILO_lan_print()
     ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb lan print
 }
 
+fwup_ilo4()
+{
+    local fw="$1"; shift
+    local get="$curl -G -b $cookie https://$hostip"
+    local post="$curl -b $cookie https://$hostip"
+    local version=$(extract_json "$($get/json/version_info)" number)
+    local status=$(extract_json "$($get/json/flash_status)" state)
+    local fw_json=
+    local progress=0
+    local flags=
+    [ -n "$version" -a "$version" != null ] && echo "Going to update $ilo -> $version..." || error 'Unable to get version info, exiting!'
+    [ -n "$status" -a "$status" == IDLE ] || error 'BMC not in ready state, exiting!'
+    echo -n 'Preparing BMC to flash...'
+    $post/json/flash_status -d "{\"method\":\"clear_status\",\"session_key\":\"$session\"}" && echo done || error 'Failed to set status, exiting!'
+    echo -n "Uploading FW image..."
+    $post/cgi-bin/uploadFile -m 300 -H 'Expect:' -f --form-string "sessionKey=$session" -F "file=@\"$fw\"" && echo done || error failed
+    while sleep 1; do
+      fw_json=$($get/sse/flash|$sed -ne '/{/,/}$/{s/^data:[[:space:]]\(.*\)/\1/g;p;}')
+      [ -n "$fw_json" ] || error "Got no status?, weird.."
+      status=$(extract_json "$fw_json" state)
+      progress=$(extract_json "$fw_json" progress)
+      flags=$(extract_json "$fw_json" flags)
+      [ $progress -eq 100 ] && break
+      case "$status" in
+	    UPLOADING) printf "\r==> %s%%" $progress
+		 ;;
+            PROGRESSING|VALIDATING) printf "\r%s: w/ FLAGS %s == Completed %s%%" $status ${flags:-N/A} $progress
+		 ;;
+	    COMPLETED) break
+		 ;;
+      esac
+    done
+}
+
+fwup_ilo3()
+{
+    local fw="$1"; shift
+    local get="$curl -G -b $cookie https://$hostip"
+    local post="$curl -b $cookie https://$hostip"
+    local version=$(extract_json "$($get/json/version_info)" number)
+    local status=$(extract_json "$($get/json/flash_status)" state)
+    local fw_json=
+    local progress=0
+    [ -n "$version" -a "$version" != null ] && echo "Going to update $ilo -> $version..." || error 'Unable to get version info, exiting!'
+    [ -n "$status" -a "$status" == IDLE ] || error 'BMC not in ready state, exiting!'
+    echo -n "Uploading FW image..."
+    $post/cgi-bin/uploadFile -m 300 -H 'Expect:' -f --form-string "sessionKey=$session" -F "file=@\"$fw\"" | fgrep -q sessionKey && echo done || error failed
+    while sleep 1; do
+      fw_json=$($get/json/flash_status)
+      [ -n "$fw_json" ] || error "Got no status?, weird.."
+      status=$(extract_json "$fw_json" state)
+      progress=$(extract_json "$fw_json" progress)
+      [ $progress -eq 100 ] && break
+      case "$status" in
+	    UPLOADING) printf "\r==> %s%%" $progress
+		 ;;
+            PROGRESSING|VALIDATING) printf "\r%s: Completed %s%%" $status $progress
+		 ;;
+	    COMPLETED) break
+		 ;;
+      esac
+    done
+    echo 'Finished, finalizing things...'
+    sleep 30
+}
+
+
 ILO_lan_set()
 {
     case "$1" in
     fwup) shift
-	[ "$ilo" == 'iLO 4' ] || error 'Only iLO4 is supported!'
 	[ -n "$1" ] || error 'Image file not specified!'
 	[ -e "$1" ] || error "File \`$1' doesn't exists!"
-	local get="$curl -G -b $cookie https://$hostip"
-	local post="$curl -b $cookie https://$hostip"
-	local version=$(extract_json "$($get/json/version_info)" number)
-	local status=$(extract_json "$($get/json/flash_status)" state)
-	local fw_json=
-	local progress=0
-	local flags=
-	[ -n "$version" -a "$version" != null ] && echo "Going to update iLO -> $version..." || error 'Unable to get version info, exiting!'
-	[ -n "$status" -a "$status" == IDLE ] || error 'BMC not in ready state, exiting!'
-	echo -n 'Preparing BMC to flash...'
-	$post/json/flash_status -d "{\"method\":\"clear_status\",\"session_key\":\"$session\"}" && echo done || error 'Failed to set status, exiting!'
-	echo -n "Uploading FW image..."
-	$post/cgi-bin/uploadFile -m 300 -H 'Expect:' -f --form-string "sessionKey=$session" -F "file=@\"$1\"" && echo done || error failed
-	while sleep 1; do
-	    fw_json=$($get/sse/flash|$sed -ne '/{/,/}$/{s/^data:[[:space:]]\(.*\)/\1/g;p;}')
-	    [ -n "$fw_json" ] || error "Got no status?, weird.."
-	    status=$(extract_json "$fw_json" state)
-	    progress=$(extract_json "$fw_json" progress)
-	    flags=$(extract_json "$fw_json" flags)
-	    [ $progress -eq 100 ] && break
-	    case "$status" in
-		    UPLOADING) printf "\r==> %s%%" $progress
-			 ;;
-       PROGRESSING|VALIDATING) printf "\r%s: w/ FLAGS %s == Completed %s%%" $status $flags $progress
-			 ;;
-		    COMPLETED) break
-			 ;;
-	    esac
-	done
+	case "$ilo" in
+	    iLO*3) fwup_ilo3 $1
+		    ;;
+	    iLO*4) fwup_ilo4 $1
+		    ;;
+	    *) echo "$ilo is unsupported!"
+		    ;;
+	esac
 	printf "\nFlash complete!\n"
 	session=
 	;;
