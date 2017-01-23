@@ -1,7 +1,15 @@
 #!/bin/sh -e
 
+extract_json()
+{
+    local json="$1" shift
+    local key="$2"
+    [ -n "$json" ] && printf '%s\n' "$json" | jq -r ."$key"
+}
+
 ILO_guess()
 {
+    local ilo_json=$($curl https://$hostip/json/login_session)
     ilo=
     if fgrep -q 'Copyright 2001, 2015 Hewlett-Packard Development Company, L.P.' $1; then \
 	if fgrep -q '<TITLE>HP Integrated Lights-Out 2 Login</TITLE>' $1; then
@@ -15,12 +23,16 @@ ILO_guess()
     fi
     if egrep -q 'Hewlett[\ -]Packard.*[LP\.]' $1; then \
 	ilo='iLO 3'
-	fgrep -q '<title>iLO 3</title>' $1 && return 0 ||:
+	fgrep -q '<title>iLO 3</title>' $1 && return 0
 	# iLO 4 is little bit tricky
 	ilo='iLO 4'
-	fgrep -q '<title>iLO 4</title>' $1 && return 0 ||:
-	ilo="$($curl https://$hostip/json/login_session | jq -r .moniker.PRODGEN 2>&1)"
-	[ -n "$ilo" ] && [ "$ilo" == 'iLO 4' ] || return 1
+	fgrep -q '<title>iLO 4</title>' $1 && return 0
+	[ -n "$ilo_json" ] || return 1
+	# another json source found in iLO 4 v2.20
+	ilo="$(extract_json "$ilo_json" alt.bmcgen)"
+	[ -n "$ilo" ] && [ "$ilo" != 'null' ] && return 0
+	ilo="$(extract_json "$ilo_json" moniker.PRODGEN)"
+	[ -n "$ilo" ] && [ "$ilo" != 'null' ] || return 1
     fi
 }
 
@@ -48,13 +60,6 @@ ILO_session_close()
 	    $curl -b "$cookie" -o /dev/null -d "{\"method\":\"logout\",\"session_key\"=\"$session\"}:\"\"" \
 		https://$hostip/json/login_session
     fi
-}
-
-extract_json()
-{
-    local json="$1" shift
-    local key="$2"
-    [ -n "$json" ] && printf '%s\n' "$json" | jq -r ."$key"
 }
 
 ILO_mc_info()
