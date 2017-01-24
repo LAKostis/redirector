@@ -98,6 +98,12 @@ UEFI supported            : $uefi
 EOF
 }
 
+ILO_mc_reset()
+{
+    $curl -b "$cookie" -d "{\"method\":\"reset_ilo\",\"cause\":\"diags\",\"session_key\":\"$session\"}" \
+	    -o /dev/null https://$hostip/json/ilo_status && echo 'OK!' || error 'Failed!'
+}
+
 ILO_mc_reset_cold()
 {
     ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb mc reset cold
@@ -126,7 +132,14 @@ fwup_ilo4()
     local progress=0
     local flags=
     [ -n "$version" -a "$version" != null ] && echo "Going to update $ilo -> $version..." || error 'Unable to get version info, exiting!'
-    [ -n "$status" -a "$status" == IDLE ] || error 'BMC not in ready state, exiting!'
+    case "$status" in
+	    IDLE) echo "Got status $status, guess we could start..."
+		    ;;
+	    *) echo -n "BMC in ${status:-N/A} state, trying to reset..."
+		    ILO_mc_reset
+		    return 1
+		    ;;
+    esac
     echo -n 'Preparing BMC to flash...'
     $post/json/flash_status -d "{\"method\":\"clear_status\",\"session_key\":\"$session\"}" && echo done || error 'Failed to set status, exiting!'
     echo -n "Uploading FW image..."
@@ -177,7 +190,7 @@ fwup_ilo3()
 		 ;;
       esac
     done
-    echo 'Finished, finalizing things...'
+    printf '\rFinished, finalizing things...\n'
     sleep 30
 }
 
