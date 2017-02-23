@@ -7,6 +7,13 @@ extract_json()
     [ -n "$json" ] && printf '%s\n' "$json" | jq -r ."$key"
 }
 
+extract_ilo2()
+{
+    local data="$1" shift
+    local key=$2
+    [ -n "$data" ] && printf "%s" "$data" | $sed -n -e 's/.*"'"$key"'","\(.*\)".*/\1/gp'
+}
+
 ILO_guess()
 {
     local ilo_json=$($curl https://$hostip/json/login_session)
@@ -69,7 +76,23 @@ ILO_mc_info()
     if [ "$ilo" == 'iLO 2' ]; then
 	    sysinfo=$($curl -b $cookie -e "https://$hostip/ie_index.htm" "https://$hostip/dqstat.htm" | \
 		    $sed -n -e '/currentUser=\"Administrator\"/,/function ButtonManager/{s/^function\ .*//g;s/<.*>//g;p;}')
-	    return 0
+	    eval `printf %s "$sysinfo" | $sed -n -e '/[[:print:]]\+\="\?[[:print:]][^"]\+\?"\?;/{s/^\(.*\)=\([[:print:]]\+"\{0\}\)"\?;/\1=\2/g;s/UID/_UID/g;p;}'`
+	    cat <<EOF
+Product Name              : $(extract_ilo2 "$sysinfo" 'Product\ Name')
+Serial Number             : $serverSerNum
+Product ID                : $serverProdID
+BIOS Version              : $(extract_ilo2 "$sysinfo" Family) $(extract_ilo2 "$sysinfo" Date)
+iLO License Type          : $productVersion
+iLO License Status        : ${licenseExpires:-N/A}
+iLO Firmware Version      : $firmwareVersion $firmwareRevision
+System GUID               : $(extract_ilo2 "$sysinfo" UUID)
+Power State               : $serverPower
+Device ID                 : 18
+Manufacturer ID           : 11
+Manufacturer Name         : Hewlett-Packard
+UEFI supported            : N/A
+EOF
+    return 0
     fi
     json="$($curl -b "$cookie" https://$hostip/json/overview)"
     license_json="$($curl -b "$cookie" https://$hostip/json/license)"
