@@ -46,7 +46,7 @@ ILO_guess()
 ILO_session_open()
 {
     cookie=
-    # iLO uses completely different approach
+    # iLO2 uses completely different approach
     if [ "$ilo" == 'iLO 2' ]; then
 	    opt_user=$(printf '%s' $opt_user|base64)
 	    opt_passwd=$(printf '%s' $opt_passwd|base64)
@@ -73,6 +73,7 @@ ILO_mc_info()
 {
     local license=
     local uefi=
+    local rom=
     if [ "$ilo" == 'iLO 2' ]; then
 	    sysinfo=$($curl -b $cookie -e "https://$hostip/ie_index.htm" "https://$hostip/dqstat.htm" | \
 		    $sed -n -e '/currentUser=\"Administrator\"/,/function ButtonManager/{s/^function\ .*//g;s/<.*>//g;p;}')
@@ -102,12 +103,15 @@ EOF
     [ $license == 'null' ] && license="$(extract_json "$license_json" eval)"
     uefi="$(extract_json "$json" isUEFI)"
     [ $uefi == 'null' ] && uefi='N/A'
+    rom="$(extract_json "$json" system_rom)"
+    printf '%s' "$rom" | egrep -q '[0-9]{2}/[0-9]{2}/[0-9]{4}' || \
+	    rom="$(extract_json "$json" system_rom) $(extract_json "$json" system_rom_date)"
     cat <<EOF
 
 Product Name              : $(extract_json "$json" product_name)
 Serial Number             : $(extract_json "$json" serial_num)
 Product ID                : $(extract_json "$json" product_id)
-BIOS Version              : $(extract_json "$json" system_rom) $(extract_json "$json" system_rom_date)
+BIOS Version              : $rom
 iLO License Type          : $(extract_json "$json" license)
 iLO License Status        : $license
 iLO Firmware Version      : $(extract_json "$json" ilo_fw_version)
