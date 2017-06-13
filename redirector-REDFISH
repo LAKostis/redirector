@@ -141,7 +141,7 @@ EOF
     local managers=$(redfish_query $(redfish_managers))
     if [ -n "$managers" ]; then
         local license=$(extract_json "$managers" 'Oem.Hp.License.LicenseString')
-        local license_type=$(extract_json "$managers" 'Oem.Hp.License.Type')
+        local license_type=$(extract_json "$managers" 'Oem.Hp.License.LicenseType')
         [ "$license" == 'null' ] && license='N/A'
         [ "$license_type" == 'null' ] && license_type='N/A'
         cat <<EOF
