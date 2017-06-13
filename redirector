@@ -19,7 +19,7 @@ usage()
     [ -z "$1" ] || rc=$1 shift
     [ "$#" -lt 1 ] || echo "$@"
     cat <<USAGE
-Usage: redirector [-U user] [-P password] [-H hostname] cmd
+Usage: redirector [-U user] [-P password] [-H hostname] [-B BMC] cmd
 
 Commands:
     lan           Configure LAN Channels
@@ -65,7 +65,7 @@ run_bmc()
 
 # needs gnu-getopt on MacOS/*BSD
 getopt="/usr/local/Cellar/gnu-getopt/1.1.6/bin/getopt"
-TEMP=`$getopt -o 46bU:P:I:H:t:h -n "redirector" -- "$@" || usage 1>&2`
+TEMP=`$getopt -o 46bU:P:I:H:B:t:h -n "redirector" -- "$@" || usage 1>&2`
 
 eval set -- "$TEMP"
 
@@ -88,6 +88,9 @@ opt_timeout=5
 opt_family=
 opt_user=ADMIN
 opt_passwd=ADMIN
+
+. $HOME/.redirector.conf
+
 while :; do
     case "$1" in
     -4) opt_family=A
@@ -108,6 +111,9 @@ while :; do
     -H) shift
         opt_host="$1"
         ;;
+    -B) shift
+        BMC="$1"
+	;;
     -I) shift
         # For compatibility only. Skip interface type
         ;;
@@ -129,7 +135,7 @@ redir_exit()
 {
     trap - SEGV ABRT BUS FPE EXIT QUIT INT TERM
     [ -z "$session" ] || run_bmc session_close
-    rm -f ${TMP:-/tmp}/redirector-kvm.$$.jnlp*
+    rm -f ${TMP:-/tmp}/redirector-kvm.$$.jnlp* ${TMP:-/tmp}/redirector-redfish.$$*
 }
 
 get_ip()
@@ -189,7 +195,7 @@ guess_bmc()
     [ -n "$hostip" ]
     $curl -L -o /tmp/redirector.guess.$$ https://$hostip/ ||
         error "Connect to \`$hostip' failed"
-    for bmc_type in $BMC_AVAILABLE ''; do
+    for bmc_type in $BMC $BMC_AVAILABLE ''; do
         [ -n "$bmc_type" ] || break
         BMC=$bmc_type
         ! run_bmc guess /tmp/redirector.guess.$$ || break
