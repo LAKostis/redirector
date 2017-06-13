@@ -1,0 +1,187 @@
+#!/bin/sh -eu
+
+base_url='/redfish/v1/'
+session=
+systems_url=
+login_url=
+logout_url=
+jq='jq -re'
+get=
+
+check_slash()
+{
+    # always add / to the end of URL to avoid
+    # redirects or errors from BMC
+    local link_url=${1:-}
+
+    [ "${link_url#${link_url%?}}" == '/' ] || link_url=${link_url}/
+    echo "$link_url"
+}
+
+extract_json_data()
+{
+    local json="$1"; shift
+    local key="${1:-.}"
+    [ -n "$json" ] && printf '%s\n' "$json" | $jq "$key"'|."@odata.id" // .href'
+}
+
+redfish_test()
+{
+    output=$($curl https://$hostip$base_url | $jq .)
+    systems_url=$(extract_json_data "$output" '.Systems')
+    login_url=$(extract_json_data "$output" '.Links // .links|.Sessions')
+    [ -n "$login_url" ] || error 'Failed to get Login URL'
+}
+
+redfish_query()
+{
+    local url=$1; shift
+    [ -n "$url" ] && url="$(check_slash $url)" \
+    || error 'No RedFish URL given'
+    $curl -H "$session" https://$hostip$url | $jq .  
+}
+
+redfish_fetch_url()
+{
+    local url=$1; shift
+    local query=${1:-}
+    local resources=
+    local resource_url=
+    [ -n "$url" ] && \
+	    resources=$(extract_json_data "$(redfish_query $url)" "$query")
+    if [ -n "$resources" ]; then
+	    for resource_url in $resources; do
+		    extract_json_data "$(redfish_query $resource_url)"
+	    done
+    else
+        error "Unable to fetch $url data"
+    fi
+}
+
+redfish_systems()
+{
+    redfish_fetch_url "$systems_url" '.Members[]'
+}
+
+redfish_chassis()
+{
+    redfish_fetch_url "$(extract_json_data "$(redfish_query $(redfish_systems))" '.links // .Links|.Chassis[]')"
+}
+
+redfish_managers()
+{
+    redfish_fetch_url "$(extract_json_data "$(redfish_query $(redfish_systems))" '.links // .Links|.ManagedBy[]')"
+}
+
+redfish_nics()
+{
+    redfish_fetch_url "$(redfish_fetch_url "$(redfish_managers)" '.EthernetInterfaces')" '.Members[]'
+}
+
+REDFISH_guess()
+{
+    $curl https://$hostip$base_url | $jq .RedfishVersion >/dev/null
+}
+
+REDFISH_session_open()
+{
+    redfish_test
+    local output="${TMP:-/tmp}/redirector-redfish.$$.auth"
+    local auth_payload="{ \"UserName\": \"$opt_user\", \"Password\": \"$opt_passwd\" }"
+    login_url=$(check_slash "$login_url")
+    $curl -f -L -D "$output" -H 'Content-Type: application/json' -X POST -d "$auth_payload" https://$hostip$login_url >/dev/null
+    if [ -s "$output" ]; then
+	    session=$(fgrep 'X-Auth-Token: ' "$output"|tr -d '\r\n')
+	    logout_url=$(fgrep 'Location: ' "$output"|tr -d '\r\n')
+	    logout_url="${logout_url#Location: }"
+    fi
+    [ -n "$session" -a -n "$logout_url" ] || session=
+}
+
+REDFISH_session_close()
+{
+    $curl -H "$session" -X DELETE $logout_url >/dev/null
+}
+
+REDFISH_mc_info()
+{
+    local systems=$(redfish_query $(redfish_systems))
+    if [ -n "$systems" ]; then
+        cat <<EOF
+=== System Info ===
+Model            : $(extract_json "$systems" 'Model')
+Manufacturer     : $(extract_json "$systems" 'Manufacturer')
+Type             : $(extract_json "$systems" 'SystemType')
+CPU Model        : $(extract_json "$systems" 'ProcessorSummary.Model')
+CPUs Count       : $(extract_json "$systems" 'ProcessorSummary.Count')
+Memory Total     : $(extract_json "$systems" 'MemorySummary.TotalSystemMemoryGiB')GB
+BIOS version     : $(extract_json "$systems" 'BiosVersion')
+
+Health State     : $(extract_json "$systems" 'Status.Health')
+Power State      : $(extract_json "$systems" 'PowerState') 
+
+EOF
+    fi
+    local chassis=$(redfish_query $(redfish_chassis))
+    if [ -n "$chassis" ]; then
+	    local pn=$(extract_json "$chassis" 'PartNumber')
+	    [ "$pn" != 'null' ] || pn='N/A'
+	    cat <<EOF
+=== Chassis Info ===
+Model            : $(extract_json "$chassis" 'Model')
+Manufacturer     : $(extract_json "$chassis" 'Manufacturer')
+Type             : $(extract_json "$chassis" 'ChassisType')
+Serial Number	 : $(extract_json "$chassis" 'SerialNumber')
+Part Number      : $pn
+
+Health State	 : $(extract_json "$chassis" 'Status.Health')
+
+EOF
+    fi
+    local managers=$(redfish_query $(redfish_managers))
+    if [ -n "$managers" ]; then
+        local license=$(extract_json "$managers" 'Oem.Hp.License.LicenseString')
+        local license_type=$(extract_json "$managers" 'Oem.Hp.License.Type')
+        [ "$license" == 'null' ] && license='N/A'
+        [ "$license_type" == 'null' ] && license_type='N/A'
+        cat <<EOF
+=== BMC Info ===
+UUID             : $(extract_json "$managers" 'UUID')
+Model            : $(extract_json "$managers" 'Model // .Oem.Hp.Type')
+FW version       : $(extract_json "$managers" 'FirmwareVersion')
+Health State     : $(extract_json "$managers" 'Status.Health // .Oem.Hp.iLOSelfTestResults[]')
+
+License          : $license
+License Type     : $license_type
+
+COMM. Enabled    : $(extract_json "$managers" 'SerialConsole.ServiceEnabled')
+COMM. Supports   : $(extract_json "$managers" 'SerialConsole.ConnectTypesSupported'|$jq 'flatten')
+
+Remote COMM. Enabled : $(extract_json "$managers" 'CommandShell.ServiceEnabled')
+Remote COMM. Supports: $(extract_json "$managers" 'CommandShell.ConnectTypesSupported'|$jq 'flatten')
+
+EOF
+    fi
+    local nics=$(redfish_query $(redfish_nics))
+    if [ -n "$nics" ]; then
+        local speed=$(extract_json "$nics" 'SpeedMbps')
+	local vlan=$(extract_json "$nics" 'VLAN.VLANEnable')
+        [ "$speed" != 'null' ] || speed='N/A '
+	[ "$vlan" != 'null' ] || vlan='N/A'
+        cat <<EOF
+=== Network Interfaces ===
+Enabled         : $(extract_json "$nics" 'InterfaceEnabled // .Oem.Hp.NICEnabled')
+MAC             : $(extract_json "$nics" 'MACAddress // .PermanentMACAddress')
+Speed           : ${speed}Mbps
+VLAN Enabled    : $vlan
+
+IPV4 Address    : $(extract_json "$nics" 'IPv4Addresses[].Address')
+IPV4 Netmask    : $(extract_json "$nics" 'IPv4Addresses[].SubnetMask')
+IPV4 Type       : $(extract_json "$nics" 'IPv4Addresses[].AddressOrigin')
+IPV4 Gateway    : $(extract_json "$nics" 'IPv4Addresses[].Gateway')
+
+DNS             : $(extract_json "$nics" 'NameServers'|$jq 'flatten')
+EOF
+    fi
+}
+
