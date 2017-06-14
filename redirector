@@ -83,13 +83,15 @@ stat="stat -f%z"
 # use brew install and gtimeout
 timeout_bin="gtimeout"
 
+CONF=$HOME/.redirector.conf
+
 opt_host=
 opt_timeout=5
 opt_family=
 opt_user=ADMIN
 opt_passwd=ADMIN
 
-. $HOME/.redirector.conf
+[ -s $CONF ] && . $CONF
 
 while :; do
     case "$1" in
