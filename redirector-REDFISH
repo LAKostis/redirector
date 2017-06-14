@@ -68,6 +68,16 @@ redfish_chassis()
     redfish_fetch_url "$(extract_json_data "$(redfish_query $(redfish_systems))" '.links // .Links|.Chassis[]')"
 }
 
+redfish_power()
+{
+    redfish_fetch_url "$(extract_json_data "$(redfish_query $(redfish_chassis))" '.Power')"
+}
+
+redfish_thermal()
+{
+    redfish_fetch_url "$(extract_json_data "$(redfish_query $(redfish_chassis))" '.Thermal')"
+}
+
 redfish_managers()
 {
     redfish_fetch_url "$(extract_json_data "$(redfish_query $(redfish_systems))" '.links // .Links|.ManagedBy[]')"
@@ -101,6 +111,21 @@ REDFISH_session_open()
 REDFISH_session_close()
 {
     $curl -H "$session" -X DELETE $logout_url >/dev/null
+}
+
+REDFISH_redfish()
+{
+    local res=${1:-systems}
+    echo "Quering redfish_${res}..."
+    redfish_query $(redfish_${res})
+}
+
+REDFISH_debug()
+{
+    local res=
+    for res in systems chassis power thermal managers nics; do
+        REDFISH_redfish "$res"
+    done
 }
 
 REDFISH_mc_info()
