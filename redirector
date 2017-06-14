@@ -31,6 +31,8 @@ Commands:
     kvm           Launch KVM session
     sol           Launch Serial Console (SOL)
     redir         Start redirection
+    debug         Verbose command output (for RedFish)
+    redfish       Query specific RF resource (default: systems)
 
 USAGE
     exit ${rc:-0}
@@ -325,6 +327,21 @@ cmd_sel()
 cmd_sol()
 {
     run_bmc sol
+}
+
+cmd_debug()
+{
+    run_bmc debug
+}
+
+cmd_redfish()
+{
+    case "$1" in
+        systems|managers|chassis|power|thermal|nics) run_bmc redfish "$1"
+        ;;
+        *) echo "Incorrect RedFish resource $1, expect systems,managers,chassis,power,thermal,nics"
+        ;;
+    esac
 }
 
 timeout_pass()
