@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/sh -eu
 
 extract_json()
 {
@@ -41,6 +41,7 @@ ILO_guess()
 	ilo="$(extract_json "$ilo_json" moniker.PRODGEN)"
 	[ -n "$ilo" ] && [ "$ilo" != 'null' ] || return 1
     fi
+    return 1
 }
 
 ILO_session_open()
