@@ -24,6 +24,13 @@ ATEN_session_close()
 
 ATEN_mc_info()
 {
+    local BIOS_VERSION=
+    local REDFISH_REV=
+    local PLATFORM_INFO_CPLD_REV=N/A
+    local PLATFORM_INFO_BIOS_VERSION=
+    local PLATFORM_INFO_REDFISH_REV=
+    local bios=N/A
+    local biosdate=N/A
     # Get relevant info from ipmitool
     local mfg_id="$(ipmitool -U $opt_user -P $opt_passwd -I lanplus -H $hostip_nb mc info 2>&1 | $sed -n -e '/^Manufacturer\ ID/,/^Product\ ID/p')"
     eval `$curl -b "SID=$session" \
@@ -34,24 +41,29 @@ ATEN_mc_info()
          "https://$hostip/cgi/ipmi.cgi" | parse_xml`
     # power status
     eval `$curl -b "SID=$session" \
-	 -d "POWER_INFO.XML=(0,0)" \
+         -d "POWER_INFO.XML=(0,0)" \
          "https://$hostip/cgi/ipmi.cgi" | parse_xml`
     # try to fetch BIOS info (for X10 models)
     eval `$curl -b "SID=$session" \
-	 -d "Get_PlatformInfo.XML=(0,0)" \
-	 "https://$hostip/cgi/ipmi.cgi" | parse_xml`
+         -d "Get_PlatformInfo.XML=(0,0)" \
+         "https://$hostip/cgi/ipmi.cgi" | parse_xml`
     # try to fetch POST CODE
     eval `$curl -b "SID=$session" \
-	 -d "SNOOPING.XML=(0,0)" \
-	 "https://$hostip/cgi/ipmi.cgi" | parse_xml`
+         -d "SNOOPING.XML=(0,0)" \
+         "https://$hostip/cgi/ipmi.cgi" | parse_xml`
+    [ "$PLATFORM_INFO_BIOS_VERSION" != ' ' -o -n "$PLATFORM_INFO_REDFISH_REV" ] && \
+    # try to fetch SMBIOS_INFO
+    eval `$curl -b "SID=$session" \
+         -d "SMBIOS_INFO.XML=(0,0)" \
+         "https://$hostip/cgi/ipmi.cgi" | parse_xml`
     cat <<EOF
 BMC Firmware Revision     : $(echo $GENERIC_IPMIFW_VERSION | $sed 's,\(..\),\1.,' | xargs printf "%.2f")
 BMC Firmware Tag          : $GENERIC_IPMIFW_TAG
 BMC Build Time            : $GENERIC_IPMIFW_BLDTIME
 BMC Kernel Version        : $KERNAL_VERSION
+BMC IP Address		  : $(echo ${GENERIC_BMC_IP}|$sed -ne 's/^0//;{s/\.0/./gp}')
+BMC MAC Address		  : $GENERIC_BMC_MAC
 EOF
-    local bios="N/A"
-    local biosdate="N/A"
     if [ -n "$PLATFORM_INFO_BIOS_VERSION" -a "$PLATFORM_INFO_BIOS_VERSION" != ' ' ]; then
 	    bios="$PLATFORM_INFO_BIOS_VERSION"
 	    biosdate="$PLATFORM_INFO_BIOS_BUILD_DATE"
@@ -63,7 +75,6 @@ EOF
     [ -n "$REDFISH_REV" ] || \
 	    REDFISH_REV=$($curl -f https://$hostip/redfish/v1/|jq -r .RedfishVersion -)
     [ -z "$REDFISH_REV" -o "$REDFISH_REV" == 'null' ] && REDFISH_REV=N/A
-    [ -n "$PLATFORM_INFO_CPLD_REV" ] || PLATFORM_INFO_CPLD_REV='N/A'
     cat <<EOF
 Platform BIOS Version     : $bios
 Platform BIOS Build Time  : $biosdate
@@ -72,8 +83,16 @@ Platform CPLD Version     : ${PLATFORM_INFO_CPLD_VERSION:-$PLATFORM_INFO_CPLD_RE
 Platform EC Version       : ${PLATFORM_INFO_EC_VERSION:-N/A}
 Platform RedFish Version  : ${PLATFORM_INFO_REDFISH_REV:-$REDFISH_REV}
 Platform Power status     : ${POWER_STATUS:-N/A}
+Platform NIC(s)           : ${PLATFORM_INFO_MB_MAC_NUM}
+Platform NIC1 MAC         : ${PLATFORM_INFO_MB_MAC_ADDR:-$PLATFORM_INFO_MB_MAC_ADDR1}
+Platform NIC2 MAC         : ${PLATFORM_INFO_MB_MAC_ADDR2:-$PLATFORM_INFO_MB_MAC_ADDR1}
 $mfg_id
 Product Name              : Unknown (0x$BoardID_ID)
+Product Serial Number     : ${SYSTEM_SN:-N/A}
+Product Model             : ${SYSTEM_PN:-N/A}
+System CPU Name           : ${CPU_VER:-N/A}
+System CPU Speed          : ${CPU_SPEED:-N/A}
+System CPU Cores          : ${CPU_CORE_ENABLED:-N/A}
 EOF
 }
 
