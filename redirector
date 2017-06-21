@@ -73,7 +73,7 @@ eval set -- "$TEMP"
 
 BMC=
 timeout=60
-curl="curl -gqsk --compressed -m $timeout"
+curl="curl -gqsk -f --compressed -m $timeout"
 # needs gnu-sed on MacOS/*BSD
 sed="gsed"
 # xargs doesn't have -r on MacOS/*BSD
