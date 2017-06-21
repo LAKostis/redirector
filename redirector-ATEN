@@ -85,7 +85,13 @@ Platform RedFish Version  : ${PLATFORM_INFO_REDFISH_REV:-$REDFISH_REV}
 Platform Power status     : ${POWER_STATUS:-N/A}
 Platform NIC(s)           : ${PLATFORM_INFO_MB_MAC_NUM}
 Platform NIC1 MAC         : ${PLATFORM_INFO_MB_MAC_ADDR:-$PLATFORM_INFO_MB_MAC_ADDR1}
-Platform NIC2 MAC         : ${PLATFORM_INFO_MB_MAC_ADDR2:-$PLATFORM_INFO_MB_MAC_ADDR1}
+$(if [ ${PLATFORM_INFO_MB_MAC_NUM} -gt 3 ]; then
+echo "Platform NIC2 MAC         : ${PLATFORM_INFO_MB_MAC_ADDR1}"
+echo "Platform NIC3 MAC         : ${PLATFORM_INFO_MB_MAC_ADDR2}"
+echo "Platform NIC4 MAC         : ${PLATFORM_INFO_MB_MAC_ADDR3}"
+else
+echo "Platform NIC2 MAC         : ${PLATFORM_INFO_MB_MAC_ADDR2:-$PLATFORM_INFO_MB_MAC_ADDR1}"
+fi)
 $mfg_id
 Product Name              : Unknown (0x$BoardID_ID)
 Product Serial Number     : ${SYSTEM_SN:-N/A}
