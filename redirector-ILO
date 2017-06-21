@@ -37,10 +37,12 @@ ILO_guess()
 	[ -n "$ilo_json" ] || return 1
 	# another json source found in iLO 4 v2.20
 	ilo="$(extract_json "$ilo_json" alt.bmcgen)"
-	[ -n "$ilo" ] && [ "$ilo" != 'null' ] && return 0
+	[ -n "$ilo" -a "$ilo" != 'null' ] && return 0
 	ilo="$(extract_json "$ilo_json" moniker.PRODGEN)"
-	[ -n "$ilo" ] && [ "$ilo" != 'null' ] || return 1
+	[ -n "$ilo" -a "$ilo" != 'null' ] || return 1 \
+	&& return 0
     fi
+    # everything fail, just exit
     return 1
 }
 
