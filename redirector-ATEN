@@ -61,7 +61,7 @@ BMC Firmware Revision     : $(echo $GENERIC_IPMIFW_VERSION | $sed 's,\(..\),\1.,
 BMC Firmware Tag          : $GENERIC_IPMIFW_TAG
 BMC Build Time            : $GENERIC_IPMIFW_BLDTIME
 BMC Kernel Version        : $KERNAL_VERSION
-BMC IP Address		  : $(echo ${GENERIC_BMC_IP}|$sed -ne 's/^0//;{s/\.0/./gp}')
+BMC IP Address		  : $(echo ${GENERIC_BMC_IP:-$BMC_IP}|$sed -ne 's/^0//;{s/\.0\?/./gp}')
 BMC MAC Address		  : $GENERIC_BMC_MAC
 EOF
     if [ -n "$PLATFORM_INFO_BIOS_VERSION" -a "$PLATFORM_INFO_BIOS_VERSION" != ' ' ]; then
