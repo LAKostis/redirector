@@ -30,6 +30,7 @@ Commands:
     user          Configure Management Controller users
     kvm           Launch KVM session
     sol           Launch Serial Console (SOL)
+    activate      Activate Supermicro license
     redir         Start redirection
     debug         Verbose command output (for RedFish)
     redfish       Query specific RF resource (default: systems)
@@ -327,6 +328,11 @@ cmd_sel()
 cmd_sol()
 {
     run_bmc sol
+}
+
+cmd_activate()
+{
+    run_bmc activate "$1"
 }
 
 cmd_debug()

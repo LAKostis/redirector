@@ -159,6 +159,33 @@ ATEN_sol()
     ipmitool -I lanplus -H $hostip_nb -p 623 -U $opt_user -P $opt_passwd sol activate
 }
 
+ATEN_activate()
+{
+    [ -n "$1" ] || error "License file not specified"
+    [ -e "$1" ] || error "License \`$1' doesn't exist"
+    eval `$curl -b "SID=$session" \
+         -d "GENERIC_INFO.XML=(0,0)" \
+         "https://$hostip/cgi/ipmi.cgi" | parse_xml`
+    [ -n "$GENERIC_BMC_MAC" ] && GENERIC_BMC_MAC=$(echo $GENERIC_BMC_MAC|tr a-z A-Z|sed -e 's/://g') \
+	   || error 'BMC MAC not found'
+    local key=$(fgrep $GENERIC_BMC_MAC $1)
+    [ -n "$key" ] && echo "Found activation key for $GENERIC_BMC_MAC.."
+    # key usually shipped as <MAC>;;key
+    key=$(echo "${key##*;;}"|awk -F"-" '{ for (i=1; i<=NF; i++) printf "%s","&bioskey"(i-1)"="$i }')
+    local fmt='+%a%%20%b%%20%d%%20%Y%%20%T%%20GMT%z%%20(%Z)'
+    local cookies="langSetFlag=0;language=English;SID=$session;mainpage=maintenance;subpage=main_bios_upload"
+    local get="$curl -b $cookies https://$hostip"
+    echo -n 'Checking activation status...'
+    $get/cgi/url_redirect.cgi?url_name=misc_license | fgrep -q '		license_activated()' && error Activated || echo 'Not activated'
+    # very similar to fw update
+    echo -n 'Sending activation key...'
+    cookies="langSetFlag=0;language=English;SID=$session;mainpage=miscellaneous;subpage=misc_license"
+    get="$curl -b $cookies https://$hostip"
+    $get/cgi/ipmi.cgi -d "BIOS_LINCENSE_ACTIVATE.XML=(0,0)&time_stamp=$(LC_ALL=C date "$fmt")$key" | fgrep -q 'BIOS_LINCESNE CHECK="1"' && echo 'OK!' \
+        || error 'Failed to activate :('
+    echo 'License activated successfully'
+}
+
 ATEN_lan_print()
 {
     # CONFIG_INFO.XML
