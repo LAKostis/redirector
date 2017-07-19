@@ -176,7 +176,7 @@ ATEN_activate()
     [ -n "$GENERIC_BMC_MAC" ] && GENERIC_BMC_MAC=$(echo $GENERIC_BMC_MAC|tr a-z A-Z|sed -e 's/://g') \
 	   || error 'BMC MAC not found'
     local key=$(fgrep $GENERIC_BMC_MAC $1)
-    [ -n "$key" ] && echo "Found activation key for $GENERIC_BMC_MAC.."
+    [ -n "$key" ] && echo "Found activation key for $GENERIC_BMC_MAC.." || error "$GENERIC_BMC_MAC: No key found!"
     # key usually shipped as <MAC>;;key
     key=$(echo "${key##*;;}"|awk -F"-" '{ for (i=1; i<=NF; i++) printf "%s","&bioskey"(i-1)"="$i }')
     local fmt='+%a%%20%b%%20%d%%20%Y%%20%T%%20GMT%z%%20(%Z)'
