@@ -256,7 +256,7 @@ ATEN_lan_set()
      biosup) shift
         [ -n "$1" ] || error "BIOS file not specified"
         [ -e "$1" ] || error "File \`$1' not exists"
-        echo 'Checking BIOS license status...'
+        echo -n 'Checking BIOS license status...'
         ATEN_sm_lic_check && echo 'Activated' || error 'Not activated, exiting...'
         local cookies="langSetFlag=0;language=English;SID=$session;mainpage=maintenance;subpage=main_bios_upload"
         local get="$curl -b $cookies https://$hostip"
