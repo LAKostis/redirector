@@ -234,6 +234,8 @@ ATEN_lan_set()
 		return 1
 	fi
 	echo "Flashing..."
+	# FIXME new X10 use 'preserve_ssl'
+	# param to keep ssl cert probably need to add this too
 	fwreply=`$get/cgi/oem_firmware_update.cgi -m 5 -d "preserve_config=1&preserve_sdr=1&timeStamp=$(LC_ALL=C date "$fmt")" ||:`
 	[ -n "$fwreply" ] || error 'startflash failed'
 	case "$fwreply" in
