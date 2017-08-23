@@ -134,8 +134,9 @@ UEFI supported            : $uefi
 EOF
     json="$($curl -b "$cookie" https://$hostip/json/rck_info)"
     if [ -n "$json" ]; then
-        rack_sn=$(extract_json "$json" enc_sn)
+        [ "$ilo" == 'iLO 4' ] && rack_sn=$(extract_json "$json" enc_sn)
         rack_pos=$(extract_json "$json" srv_loc)
+        [ "$rack_pos" == 'Unknown' -o "$rack_ip" == 'Unknown' ] && return 0
         rack_ip=$(extract_json "$json" ip_addr)
         rack_mac=$(extract_json "$json" mac_addr)
         rack_name=$(extract_json "$json" rck_name)
@@ -143,12 +144,12 @@ EOF
         cat <<EOF
 
 === Chassis information ===
-Chassis name             : ${rack_name:-N/A}
-Chassis S/N              : ${rack_sn:-N/A}
-Chassis Health           : ${rack_status:-N/A}
-Chassis IP               : ${rack_ip:-N/A}
-Chassis MAC              : ${rack_mac:-N/A}
-Blade position           : ${rack_pos:-N/A}
+Chassis name              : ${rack_name:-N/A}
+Chassis S/N               : ${rack_sn:-N/A}
+Chassis Health            : ${rack_status:-N/A}
+Chassis IP                : ${rack_ip:-N/A}
+Chassis MAC               : ${rack_mac:-N/A}
+Blade position            : ${rack_pos:-N/A}
 EOF
     fi
 }
