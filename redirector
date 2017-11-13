@@ -68,8 +68,11 @@ run_bmc()
     eval ${BMC}_${func} $@
 }
 
+CONF=$HOME/.redirector.conf
+[ -s $CONF ] && . $CONF
+
 # needs gnu-getopt on MacOS/*BSD
-getopt="/usr/local/Cellar/gnu-getopt/1.1.6/bin/getopt"
+getopt="${getopt:-/usr/local/Cellar/gnu-getopt/1.1.6/bin/getopt}"
 TEMP=`$getopt -o 46bU:P:I:H:B:t:h -n "redirector" -- "$@" || usage 1>&2`
 
 eval set -- "$TEMP"
@@ -78,25 +81,21 @@ BMC=
 timeout=60
 curl="curl -gqsk -f --compressed -m $timeout"
 # needs gnu-sed on MacOS/*BSD
-sed="gsed"
+sed="${sed:-gsed}"
 # xargs doesn't have -r on MacOS/*BSD
-xargs="xargs"
+xargs="${xargs:-xargs}"
 # use stat -c%s on Linux
 # stat has different option on MacOS/*BSD
-stat="stat -f%z"
+stat="${stat:-'stat -f%z'}"
 # timeout is available on MacOS/*BSD
 # use brew install and gtimeout
-timeout_bin="gtimeout"
-
-CONF=$HOME/.redirector.conf
+timeout_bin="${timeout_bin:-gtimeout}"
 
 opt_host=
 opt_timeout=5
 opt_family=
-opt_user=ADMIN
-opt_passwd=ADMIN
-
-[ -s $CONF ] && . $CONF
+opt_user=${opt_user:-ADMIN}
+opt_passwd=${opt_passwd:-ADMIN}
 
 while :; do
     case "$1" in
