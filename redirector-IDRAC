@@ -25,6 +25,7 @@ IDRAC_session_open()
             ST2="${tokenstr##*,ST2=}"
 	    ST1="${tokenstr%%,ST2=*}"
 	    ST1=${ST1##ST1=}
+	    [ -n "$ST1" -a -n "$ST2" ] || exit 1
 	    get="$curl -H ST2:$ST2"
     fi
 }
@@ -32,6 +33,11 @@ IDRAC_session_open()
 get_data()
 {
      $get -b "$cookie; tokenvalue=$ST1" "https://$hostip/data?get=pwState,sysDesc,sysRev,hostName,osName,osVersion,svcTag,expSvcCode,biosVer,fwVersion,LCCfwVersion,iDSDMVersion,v4Enabled,v4IPAddr,v6Enabled,v6LinkLocal,v6Addr,v6SiteLocal,macAddr,dnsDomain,devLocInfo,osVersion,intrusion,powerSupplies,RecentEventLogEntries,GetRecentWorknotes,lcdChassisStatus,hostEventStatus,lcdEventStatus"
+}
+
+get_racdata()
+{
+     $get -b "$cookie; tokenvalue=$ST1" "https://$hostip/data?get=racName,productInformation,hwVersion,fwVersion,fwUpdated,datetime,ipmiMaxSessions,ipmiSessionCount,netEnabled,ipmiVersion,macAddr,netMode,v4Enabled,v4DHCPEnabled,v4IPAddr,v4Gateway,v4NetMask,v4DHCPServers,v4DNS1,v4DNS2,v6Enabled,v6DHCPEnabled,v6Addr,v6Gateway,v6DHCPServers,v6DNS1,v6DNS2,v6LinkLocal,v6Prefix,v6SiteLocal,v6SiteLocal3,v6SiteLocal4,v6SiteLocal5,v6SiteLocal6,v6SiteLocal7,v6SiteLocal8,v6SiteLocal9,v6SiteLocal10,v6SiteLocal11,v6SiteLocal12,v6SiteLocal13,v6SiteLocal14,v6SiteLocal15,"
 }
 
 get_inv()
@@ -55,6 +61,9 @@ IDRAC_mc_info()
      # get_inventory
      local inv=$(get_inv)
      local data=$(get_data)
+     local racdata=
+     local idracts=
+     local racname=
      local fwver=
      local biosver=
      echo "$inv" > inv.out
@@ -62,24 +71,51 @@ IDRAC_mc_info()
      if [ -n "$inv" ]; then # IDRAC 7/8
 	     fwver=$(echo "$inv"|parse_inv_xml 'Lifecycle\ Controller' |$sed -n -e 's,.*Application_version\=\"\([^;]\+\)";.*,\1,gp')
 	     biosver=$(echo "$inv"|parse_inv_xml 'BIOS' |$sed -n -e 's,.*Application_version\="\([^;]\+\)";.*,\1,gp')
+	     idracts=$(echo "$inv"|parse_inv_xml 'Lifecycle\ Controller' |$sed -n -e 's,.*Device_TimeStamp\="\([^;]\+\)";.*,\1,gp')
      else # IDRAC 6?
+	     # LCCfwVersion is obsoleted and no use
 	     fwver=$(echo "$data"|$sed -n -e '/<\LCCfwVersion>/,$d;s,.*fwVersion>\([^<\/]\+\)<.*,\1,p')
 	     biosver=$(echo "$data"|$sed -n -e 's,.*biosVer>\([^<\/]\+\)<.*,\1,gp')
+	     racdata=$(get_racdata)
+	     racname=$(echo "$racdata"|$sed -n -e 's,.*racName>\([^<\/]\+\)<.*,\1,gp')
+	     idracts=$(echo "$racdata"|$sed -n -e 's,.*fwUpdated>\(.*\),\1,gp')
+	     [ -n "$racname" ] && fwver="$racname $fwver"
      fi
      cat <<EOF
-iDRAC Firmware Revision   : $(echo "$fwver")
-iDRAC Build Time          : $(echo "$inv"|parse_inv_xml 'Lifecycle\ Controller' |$sed -n -e 's,.*Device_TimeStamp\="\([^;]\+\)";.*,\1,gp')
-BIOS Revision             : $(echo "$biosver")
-BIOS Timestamp            : $(echo "$inv"|parse_inv_xml 'BIOS' |$sed -n -e 's,.*Device_TimeStamp\="\([^;]\+\)";.*,\1,gp')
 Power State               : $(echo "$data"|$sed -n -e 's,1,Power on,g;s,0,Power off,g;s,.*pwState>\([^<\/]\+\)<.*,\1,gp')
 System Description        : $(echo "$data"|$sed -n -e 's,.*sysDesc>\([^<\/]\+\)<.*,\1,gp')
 System Revision           : $(echo "$data"|$sed -n -e 's,.*sysRev>\([^<\/]\+\)<.*,\1,gp')
 System Tag                : $(echo "$data"|$sed -n -e 's,.*svcTag>\([^<\/]\+\)<.*,\1,gp')
+System Hostname           : $(echo "$data"|$sed -n -e 's,.*hostName>\([^<\/]\+\)<.*,\1,gp')
+iDRAC Hostname            : $(echo "$data"|$sed -n -e 's,.*hostname>\([^<\/]\+\)<.*,\1,gp')
+iDRAC Firmware Revision   : $fwver
+iDRAC Updated on          : $idracts
+BIOS Revision             : $biosver
+EOF
+     if [ -n "$racdata" ]; then # IDRAC 6
+	if [ -n "$(echo "$racdata"|$sed -n -e 's,.*netEnabled>\([^<\/]\+\)<.*,\1,gp')" ]; then
+                cat <<EOF
+== Network information ==
+iDRAC MAC address         : $(echo "$racdata)"|$sed -n -e 's,.*macAddr>\([^<\/]\+\)<.*,\1,gp')
+IPV4
+- enabled                 : $(echo "$racdata)"|$sed -n -e 's,.*v4Enabled>\([^<\/]\+\)<.*,\1,gp')
+- address                 : $(echo "$racdata)"|$sed -n -e 's,.*v4IPAddr>\([^<\/]\+\)<.*,\1,gp')
+- DHCP enabled            : $(echo "$racdata)"|$sed -n -e 's,.*v4DHCPEnabled>\([^<\/]\+\)<.*,\1,gp')
+IPV6
+- enabled                 : $(echo "$racdata)"|$sed -n -e 's,.*v6Enabled>\([^<\/]\+\)<.*,\1,gp')
+- address                 : $(echo "$racdata)"|$sed -n -e 's,.*v6Addr>\([^<\/]\+\)<.*,\1,gp')
+- DHCP enabled            : $(echo "$racdata)"|$sed -n -e 's,.*v6DHCPEnabled>\([^<\/]\+\)<.*,\1,gp')
+EOF
+	fi
+	else
+                cat <<EOF
+BIOS Timestamp            : $(echo "$inv"|parse_inv_xml 'BIOS' |$sed -n -e 's,.*Device_TimeStamp\="\([^;]\+\)";.*,\1,gp')
 Chassis Name              : $(echo "$data"|$sed -n -e 's,.*devChassis>\([^<\/]\+\)<.*,\1,gp')
 Chassis Tag               : $(echo "$data"|$sed -n -e 's,.*devChassisServiceTag>\([^<\/]\+\)<.*,\1,gp')
 Chassis Model             : $(echo "$data"|$sed -n -e 's,.*devChassisModel>\([^<\/]\+\)<.*,\1,gp')
 Blade Slot                : $(echo "$data"|$sed -n -e 's,.*devBladeSlot>\([^<\/]\+\)<.*,\1,gp')
 EOF
+     fi
 }
 
 IDRAC_kvm()
