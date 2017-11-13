@@ -66,8 +66,6 @@ IDRAC_mc_info()
      local racname=
      local fwver=
      local biosver=
-     echo "$inv" > inv.out
-     echo "$data" > data.out
      if [ -n "$inv" ]; then # IDRAC 7/8
 	     fwver=$(echo "$inv"|parse_inv_xml 'Lifecycle\ Controller' |$sed -n -e 's,.*Application_version\=\"\([^;]\+\)";.*,\1,gp')
 	     biosver=$(echo "$inv"|parse_inv_xml 'BIOS' |$sed -n -e 's,.*Application_version\="\([^;]\+\)";.*,\1,gp')
