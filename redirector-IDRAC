@@ -2,7 +2,15 @@
 
 IDRAC_guess()
 {
-    $curl https://$hostip/login.html| fgrep -q 'iDRAC'
+    idrac=
+    $curl https://$hostip/login.html > $1
+    if fgrep -q 'iDRAC' $1; then
+	    fgrep -q 'Integrated Dell Remote Access Controller 6 - Enterprise' $1 \
+		    && idrac=6
+	    [ -n "$idrac" ] && return 0 || idrac=7
+	    return 0
+    fi
+    return 1
 }
 
 IDRAC_session_open()
@@ -23,7 +31,7 @@ IDRAC_session_open()
 
 get_data()
 {
-     $get -b "$cookie; tokenvalue=$ST1" "https://$hostip/data?get=pwState,sysDesc,sysRev,svcTag,iDSDMVersion,v4Enabled,v4IPAddr,v6Enabled,v6LinkLocal,v6Addr,v6SiteLocal,macAddr,dnsDomain,devLocInfo,osVersion,intrusion,powerSupplies,RecentEventLogEntries,GetRecentWorknotes,lcdChassisStatus,hostEventStatus,lcdEventStatus"
+     $get -b "$cookie; tokenvalue=$ST1" "https://$hostip/data?get=pwState,sysDesc,sysRev,hostName,osName,osVersion,svcTag,expSvcCode,biosVer,fwVersion,LCCfwVersion,iDSDMVersion,v4Enabled,v4IPAddr,v6Enabled,v6LinkLocal,v6Addr,v6SiteLocal,macAddr,dnsDomain,devLocInfo,osVersion,intrusion,powerSupplies,RecentEventLogEntries,GetRecentWorknotes,lcdChassisStatus,hostEventStatus,lcdEventStatus"
 }
 
 get_inv()
@@ -47,10 +55,21 @@ IDRAC_mc_info()
      # get_inventory
      local inv=$(get_inv)
      local data=$(get_data)
+     local fwver=
+     local biosver=
+     echo "$inv" > inv.out
+     echo "$data" > data.out
+     if [ -n "$inv" ]; then # IDRAC 7/8
+	     fwver=$(echo "$inv"|parse_inv_xml 'Lifecycle\ Controller' |$sed -n -e 's,.*Application_version\=\"\([^;]\+\)";.*,\1,gp')
+	     biosver=$(echo "$inv"|parse_inv_xml 'BIOS' |$sed -n -e 's,.*Application_version\="\([^;]\+\)";.*,\1,gp')
+     else # IDRAC 6?
+	     fwver=$(echo "$data"|$sed -n -e '/<\LCCfwVersion>/,$d;s,.*fwVersion>\([^<\/]\+\)<.*,\1,p')
+	     biosver=$(echo "$data"|$sed -n -e 's,.*biosVer>\([^<\/]\+\)<.*,\1,gp')
+     fi
      cat <<EOF
-iDRAC Firmware Revision   : $(echo "$inv"|parse_inv_xml 'Lifecycle\ Controller' |$sed -n -e 's,.*Application_version\=\"\([^;]\+\)";.*,\1,gp')
+iDRAC Firmware Revision   : $(echo "$fwver")
 iDRAC Build Time          : $(echo "$inv"|parse_inv_xml 'Lifecycle\ Controller' |$sed -n -e 's,.*Device_TimeStamp\="\([^;]\+\)";.*,\1,gp')
-BIOS Revision             : $(echo "$inv"|parse_inv_xml 'BIOS' |$sed -n -e 's,.*Application_version\="\([^;]\+\)";.*,\1,gp')
+BIOS Revision             : $(echo "$biosver")
 BIOS Timestamp            : $(echo "$inv"|parse_inv_xml 'BIOS' |$sed -n -e 's,.*Device_TimeStamp\="\([^;]\+\)";.*,\1,gp')
 Power State               : $(echo "$data"|$sed -n -e 's,1,Power on,g;s,0,Power off,g;s,.*pwState>\([^<\/]\+\)<.*,\1,gp')
 System Description        : $(echo "$data"|$sed -n -e 's,.*sysDesc>\([^<\/]\+\)<.*,\1,gp')
