@@ -1,5 +1,7 @@
 #!/bin/sh -e
 
+GLOBIGNORE='*~'
+
 tool_path=${0%/*}
 java_path=${0%/*}/src
 [ "$tool_path" != '/usr/bin' ] ||
